@@ -11,6 +11,8 @@
     "approvalRequest": { "$ref": "#/$defs/ApprovalRequest" },
     "runEvent": { "$ref": "#/$defs/RunEvent" },
     "auditEvent": { "$ref": "#/$defs/AuditEvent" },
+    "eventBatch": { "$ref": "#/$defs/CipEventBatch" },
+    "ingestReceipt": { "$ref": "#/$defs/CipIngestReceipt" },
     "evidenceBundle": { "$ref": "#/$defs/EvidenceBundle" },
     "guardrailDefinition": { "$ref": "#/$defs/GuardrailDefinition" }
   },
@@ -325,6 +327,57 @@
         "occurredAt": { "type": "string", "format": "date-time" },
         "actor": { "$ref": "#/$defs/AuditActor" },
         "payload": { "type": "object" }
+      }
+    },
+    "CipIngestEvent": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "type"],
+          "properties": {
+            "kind": { "const": "run_event" },
+            "type": { "type": "string" },
+            "actor": { "$ref": "#/$defs/AuditActor" },
+            "payload": { "type": "object" },
+            "traceCorrelation": { "type": "object" },
+            "occurredAt": { "type": "string", "format": "date-time" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "category", "action", "actor", "payload"],
+          "properties": {
+            "kind": { "const": "audit_event" },
+            "category": { "type": "string" },
+            "action": { "type": "string" },
+            "severity": { "type": "string" },
+            "actor": { "$ref": "#/$defs/AuditActor" },
+            "payload": { "type": "object" },
+            "deploymentId": { "type": "string" },
+            "occurredAt": { "type": "string", "format": "date-time" }
+          }
+        }
+      ]
+    },
+    "CipEventBatch": {
+      "type": "object",
+      "required": ["tenantId", "sessionId", "events"],
+      "properties": {
+        "tenantId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "events": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/CipIngestEvent" }
+        }
+      }
+    },
+    "CipIngestReceipt": {
+      "type": "object",
+      "required": ["ingestJobId", "acceptedCount", "receivedAt"],
+      "properties": {
+        "ingestJobId": { "type": "string" },
+        "acceptedCount": { "type": "integer", "minimum": 0 },
+        "receivedAt": { "type": "string", "format": "date-time" }
       }
     },
     "EvidenceBundle": {

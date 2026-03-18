@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+data:
+  CIP_OPERATOR_ISSUER: {{ .Values.config.operatorIssuer | quote }}
+  CIP_OPERATOR_AUDIENCE: {{ .Values.config.operatorAudience | quote }}
+  CIP_WORKER_POLL_INTERVAL_MS: {{ .Values.config.workerPollIntervalMs | quote }}
+  CIP_WORKER_MAX_ATTEMPTS: {{ .Values.config.workerMaxAttempts | quote }}

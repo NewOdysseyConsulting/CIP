@@ -228,11 +228,26 @@ export interface CompleteRunSessionInput {
 }
 
 export interface AppendRunEventInput {
+  id?: string;
   sessionId: string;
   type: RunEvent["type"];
   actor?: AuditActor;
   payload?: Record<string, unknown>;
   traceCorrelation?: TraceCorrelation;
+  occurredAt?: string;
+}
+
+export interface AppendAuditEventInput {
+  id?: string;
+  tenantId: string;
+  deploymentId?: string;
+  sessionId?: string;
+  category: AuditEvent["category"];
+  action: string;
+  severity?: AuditEvent["severity"];
+  actor: AuditActor;
+  payload: Record<string, unknown>;
+  occurredAt?: string;
 }
 
 export interface RequestHumanApprovalInput {
@@ -819,17 +834,23 @@ export class CipControlPlane {
 
   async appendRunEvent(input: AppendRunEventInput): Promise<RunEvent> {
     const session = await this.ensureRunSessionExists(input.sessionId);
+    if (input.id !== undefined) {
+      const existing = await this.repositories.runEvents.getById(input.id);
+      if (existing !== null) {
+        return existing;
+      }
+    }
     const priorEvents = await this.repositories.runEvents.list({
       sessionId: session.id,
     });
     const event: RunEvent = {
-      ...buildRecordMetadata(),
+      ...buildRecordMetadata(input.id),
       tenantId: session.tenantId,
       deploymentId: session.deploymentId,
       sessionId: session.id,
       type: input.type,
       sequence: priorEvents.length + 1,
-      occurredAt: nowIso(),
+      occurredAt: input.occurredAt ?? nowIso(),
       actor: input.actor ?? { type: "agent", id: "cip-runtime" },
       payload: input.payload ?? {},
       ...(input.traceCorrelation === undefined
@@ -849,6 +870,36 @@ export class CipControlPlane {
       },
     });
     return saved;
+  }
+
+  async appendAuditEvent(input: AppendAuditEventInput): Promise<AuditEvent> {
+    if (input.id !== undefined) {
+      const existing = await this.repositories.auditEvents.getById(input.id);
+      if (existing !== null) {
+        return existing;
+      }
+    }
+    return this.recordAuditEvent({
+      ...(input.id === undefined ? {} : { id: input.id }),
+      tenantId: input.tenantId,
+      ...(input.deploymentId === undefined
+        ? {}
+        : { deploymentId: input.deploymentId }),
+      ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
+      category: input.category,
+      action: input.action,
+      actor: input.actor,
+      payload: input.payload,
+      ...(input.severity === undefined ? {} : { severity: input.severity }),
+      ...(input.occurredAt === undefined
+        ? {}
+        : { occurredAt: input.occurredAt }),
+    });
+  }
+
+  async getEvidenceBundle(sessionId: string): Promise<EvidenceBundle | null> {
+    const [bundle] = await this.repositories.evidenceBundles.list({ sessionId });
+    return bundle ?? null;
   }
 
   async requestHumanApproval(
@@ -1049,6 +1100,7 @@ export class CipControlPlane {
   }
 
   private async recordAuditEvent(input: {
+    id?: string;
     tenantId: string;
     deploymentId?: string;
     sessionId?: string;
@@ -1057,9 +1109,10 @@ export class CipControlPlane {
     severity?: AuditEvent["severity"];
     actor: AuditActor;
     payload: Record<string, unknown>;
+    occurredAt?: string;
   }): Promise<AuditEvent> {
     const event: AuditEvent = {
-      id: randomUUID(),
+      id: input.id ?? randomUUID(),
       tenantId: input.tenantId,
       ...(input.deploymentId === undefined
         ? {}
@@ -1068,7 +1121,7 @@ export class CipControlPlane {
       category: input.category,
       action: input.action,
       severity: input.severity ?? "info",
-      occurredAt: nowIso(),
+      occurredAt: input.occurredAt ?? nowIso(),
       actor: input.actor,
       payload: input.payload,
     };

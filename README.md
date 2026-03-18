@@ -6,6 +6,8 @@ This repository is a polyglot monorepo for CIP phase 1 with:
 
 - a TypeScript package for Node.js teams
 - a Python package for backend and orchestration teams
+- a deployable TypeScript control-plane API, worker, and migration runner
+- Kubernetes Helm and Terraform deployment assets
 - a shared schema directory for protocol-level assets
 - OpenAI Agents SDK integration in both language packages
 - versioned control-plane records and immutable blueprint releases
@@ -41,15 +43,29 @@ The control plane in this repo is the infrastructure slice that runtime SDKs do 
 
 ```text
 .
+├── infra
+│   ├── helm
+│   │   └── cip-control-plane
+│   └── terraform
+│       └── kubernetes
+│           └── cip-control-plane
 ├── schemas
+│   ├── cip-admin-api.openapi.json
 │   └── cip-control-plane.schema.json
+├── sql
+│   └── postgres
+│       └── 001_phase1.sql
 ├── typescript
-│   └── packages
-│       └── cip
-│           ├── src
-│           ├── test
-│           ├── package.json
-│           └── tsconfig.json
+│   ├── packages
+│   │   └── cip
+│   │       ├── src
+│   │       ├── test
+│   │       ├── package.json
+│   │       └── tsconfig.json
+│   └── services
+│       ├── control-plane-api
+│       ├── control-plane-worker
+│       └── control-plane-migrate
 ├── python
 │   └── packages
 │       └── cip
@@ -103,6 +119,24 @@ Includes:
 - policy evaluator, guardrail catalog, secret resolvers, connector stubs, admin API handlers, telemetry types
 - `create_cip_control_plane_agent()` and `OpenAIAgentsRuntimeAdapter` built on `openai-agents`
 
+### `typescript/services/control-plane-api`
+
+Deployable Fastify service that exposes the hosted CIP control-plane API:
+
+- SDK-key and operator-token auth
+- asynchronous event ingestion into a Postgres-backed queue
+- deployment transition and rollback endpoints
+- replay and evidence bundle reads
+- idempotent session creation, event enqueue, and session completion
+
+### `typescript/services/control-plane-worker`
+
+Background worker that polls queued event batches and materializes them into CIP run events, audit events, and evidence projections.
+
+### `typescript/services/control-plane-migrate`
+
+Migration runner for the shared Postgres schema used by the SDK-backed control plane and deployable service.
+
 ## Development
 
 ### TypeScript
@@ -111,6 +145,9 @@ Includes:
 npm install
 npm run build:ts
 npm run test:ts
+npm run build --workspace @new-odyssey/cip-control-plane-api
+npm run build --workspace @new-odyssey/cip-control-plane-worker
+npm run build --workspace @new-odyssey/cip-control-plane-migrate
 ```
 
 ### Python
@@ -135,13 +172,14 @@ Open source here:
 - repository interfaces
 - in-memory and Postgres repository adapters
 - control-plane orchestration
+- SDK transports, client facades, and run trackers
+- deployable control-plane API, worker, and migration runner
 - policy evaluation and default guardrail catalog
 - connector stubs for Workday and Dynamics 365
-- OpenAI Agents SDK runtime adapters and admin API stubs
+- OpenAI Agents SDK runtime adapters and REST/OpenAPI contracts
 
 Not included here:
 
-- production database adapters
 - credential vault integrations
 - full Pantheon operations layer
 - proprietary policy engines

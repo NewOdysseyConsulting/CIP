@@ -8,15 +8,16 @@
     "node": ">=20"
   },
   "workspaces": [
-    "typescript/packages/*"
+    "typescript/packages/*",
+    "typescript/services/*"
   ],
   "scripts": {
     "build": "npm run build:ts",
-    "build:ts": "npm run build --workspace @new-odyssey/cip",
+    "build:ts": "npm run build --workspace @new-odyssey/cip && npm run build --workspace @new-odyssey/cip-control-plane-api && npm run build --workspace @new-odyssey/cip-control-plane-worker && npm run build --workspace @new-odyssey/cip-control-plane-migrate",
     "test": "npm run test:ts && npm run test:py",
-    "test:ts": "npm run test --workspace @new-odyssey/cip",
+    "test:ts": "npm run test --workspace @new-odyssey/cip && npm run test --workspace @new-odyssey/cip-control-plane-api && npm run test --workspace @new-odyssey/cip-control-plane-worker",
     "test:py": "PYTHONPATH=python/packages/cip/src .venv/bin/python -m unittest discover -s python/packages/cip/tests -p 'test_*.py'",
-    "clean": "rm -rf node_modules package-lock.json typescript/packages/cip/dist"
+    "clean": "rm -rf node_modules package-lock.json typescript/packages/cip/dist typescript/services/control-plane-api/dist typescript/services/control-plane-worker/dist typescript/services/control-plane-migrate/dist"
   },
   "devDependencies": {}
 }

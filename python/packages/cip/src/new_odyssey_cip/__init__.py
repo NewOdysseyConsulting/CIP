@@ -1,4 +1,15 @@
 from .admin_api import AdminApiResponse, create_admin_api_handlers
+from .client import (
+    CipAuditEventEnvelope,
+    CipClient,
+    CipControlPlaneTransport,
+    CipEventBatch,
+    CipIngestReceipt,
+    CipRunEventEnvelope,
+    CipRunTracker,
+    HttpCipControlPlaneTransport,
+    LocalCipControlPlaneTransport,
+)
 from .connectors import (
     ConnectorStubContext,
     RepositoryConnectorQuotaCoordinator,
@@ -10,6 +21,7 @@ from .connectors import (
     workday_connector_stub,
 )
 from .control_plane import (
+    AppendAuditEventInput,
     AppendRunEventInput,
     CipControlPlane,
     CipControlPlaneError,
@@ -66,14 +78,22 @@ from .secrets import EnvironmentSecretResolver, SecretAccessPolicy, StubVaultRes
 __all__ = [
     "AdminApiResponse",
     "AgentBlueprint",
+    "AppendAuditEventInput",
     "AppendRunEventInput",
     "ApprovalRequest",
     "AuditActor",
     "AuditEvent",
     "CipControlPlane",
     "CipControlPlaneError",
+    "CipClient",
+    "CipControlPlaneTransport",
+    "CipAuditEventEnvelope",
+    "CipEventBatch",
+    "CipIngestReceipt",
     "CipAgentSpec",
     "CipRunRequest",
+    "CipRunEventEnvelope",
+    "CipRunTracker",
     "CompleteRunSessionInput",
     "ConnectorBinding",
     "ConnectorDefinition",
@@ -88,7 +108,9 @@ __all__ = [
     "EvidenceBundle",
     "GuardrailDefinition",
     "HumanApprovalCheckpoint",
+    "HttpCipControlPlaneTransport",
     "InMemoryTelemetrySink",
+    "LocalCipControlPlaneTransport",
     "OpenAIAgentsRuntimeAdapter",
     "PHASE1_POSTGRES_MIGRATION_SQL",
     "PolicyClause",

@@ -255,6 +255,20 @@ class AppendRunEventInput:
     actor: AuditActor | None = None
     payload: dict[str, Any] | None = None
     trace_correlation: TraceCorrelation | None = None
+    occurred_at: str | None = None
+
+
+@dataclass(slots=True)
+class AppendAuditEventInput:
+    tenant_id: str
+    category: str
+    action: str
+    actor: AuditActor
+    payload: dict[str, Any]
+    deployment_id: str | None = None
+    session_id: str | None = None
+    severity: str = "info"
+    occurred_at: str | None = None
 
 
 @dataclass(slots=True)
@@ -706,7 +720,7 @@ class CipControlPlane:
             session_id=session.id,
             type=input_data.type,
             sequence=len(prior_events) + 1,
-            occurred_at=_utc_now(),
+            occurred_at=input_data.occurred_at or _utc_now(),
             actor=input_data.actor or AuditActor(type="agent", id="cip-runtime"),
             payload=input_data.payload or {},
             trace_correlation=input_data.trace_correlation,
@@ -720,6 +734,29 @@ class CipControlPlane:
             )
         )
         return event
+
+    def append_audit_event(self, input_data: AppendAuditEventInput) -> AuditEvent:
+        return self._record_audit_event(
+            tenant_id=input_data.tenant_id,
+            deployment_id=input_data.deployment_id,
+            session_id=input_data.session_id,
+            category=input_data.category,
+            action=input_data.action,
+            actor=input_data.actor,
+            payload=input_data.payload,
+            severity=input_data.severity,
+            occurred_at=input_data.occurred_at,
+        )
+
+    def get_evidence_bundle(self, session_id: str) -> EvidenceBundle | None:
+        return next(
+            (
+                bundle
+                for bundle in self.repositories.evidence_bundles.list()
+                if bundle.session_id == session_id
+            ),
+            None,
+        )
 
     def request_human_approval(
         self,
@@ -897,6 +934,7 @@ class CipControlPlane:
         deployment_id: str | None = None,
         session_id: str | None = None,
         severity: str = "info",
+        occurred_at: str | None = None,
     ) -> AuditEvent:
         event = AuditEvent(
             id=str(uuid4()),
@@ -906,7 +944,7 @@ class CipControlPlane:
             category=category,
             action=action,
             severity=severity,
-            occurred_at=_utc_now(),
+            occurred_at=occurred_at or _utc_now(),
             actor=actor,
             payload=payload,
         )

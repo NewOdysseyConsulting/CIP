@@ -1,12 +1,258 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "CIP Admin API",
+    "title": "CIP Control Plane API",
     "version": "0.1.0",
-    "description": "Phase 1 admin API contract for the CIP control plane."
+    "description": "REST API contract for the deployable CIP control plane."
   },
   "paths": {
-    "/tenants/{tenantId}": {
+    "/healthz": {
+      "get": {
+        "operationId": "healthz",
+        "responses": {
+          "200": { "description": "Service is alive." }
+        }
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "readyz",
+        "responses": {
+          "200": { "description": "Service is ready." },
+          "503": { "description": "Service is not ready." }
+        }
+      }
+    },
+    "/v1/sessions": {
+      "post": {
+        "operationId": "createSession",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/StartRunSessionInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Run session created." },
+          "401": { "description": "Missing or invalid SDK API key." }
+        }
+      }
+    },
+    "/v1/sessions/{sessionId}/events:enqueue": {
+      "post": {
+        "operationId": "enqueueEvents",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CipEventBatch" }
+            }
+          }
+        },
+        "responses": {
+          "202": { "description": "Batch accepted for asynchronous processing." }
+        }
+      }
+    },
+    "/v1/sessions/{sessionId}:complete": {
+      "post": {
+        "operationId": "completeSession",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CompleteRunSessionInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Run session completed." }
+        }
+      }
+    },
+    "/v1/sessions/{sessionId}/approval-requests": {
+      "post": {
+        "operationId": "requestApproval",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RequestHumanApprovalInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Approval request created." }
+        }
+      }
+    },
+    "/v1/sessions/{sessionId}/replay": {
+      "get": {
+        "operationId": "getReplay",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Replayed run session." }
+        }
+      }
+    },
+    "/v1/evidence-bundles/{sessionId}": {
+      "get": {
+        "operationId": "getEvidenceBundle",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Evidence bundle or null." }
+        }
+      }
+    },
+    "/v1/approval-requests/{approvalRequestId}:resolve": {
+      "post": {
+        "operationId": "resolveApproval",
+        "parameters": [
+          {
+            "name": "approvalRequestId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ResolveApprovalRequestInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Approval request resolved." }
+        }
+      }
+    },
+    "/v1/deployments/{deploymentId}:transition": {
+      "post": {
+        "operationId": "transitionDeployment",
+        "parameters": [
+          {
+            "name": "deploymentId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TransitionDeploymentInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Deployment transitioned." }
+        }
+      }
+    },
+    "/v1/deployments/{deploymentId}:rollback": {
+      "post": {
+        "operationId": "rollbackDeployment",
+        "parameters": [
+          {
+            "name": "deploymentId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RollbackDeploymentInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Deployment rolled back." }
+        }
+      }
+    },
+    "/v1/deployments": {
+      "get": {
+        "operationId": "listDeployments",
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Deployment records." }
+        }
+      }
+    },
+    "/v1/tenants/{tenantId}": {
       "get": {
         "operationId": "getTenant",
         "parameters": [
@@ -22,9 +268,9 @@
         }
       }
     },
-    "/deployments": {
+    "/v1/audit-events": {
       "get": {
-        "operationId": "getDeployments",
+        "operationId": "listAuditEvents",
         "parameters": [
           {
             "name": "tenantId",
@@ -34,88 +280,116 @@
           }
         ],
         "responses": {
-          "200": { "description": "Deployment records." }
+          "200": { "description": "Audit event records." }
         }
       }
-    },
-    "/sessions/{sessionId}": {
-      "get": {
-        "operationId": "getSession",
-        "parameters": [
+    }
+  },
+  "components": {
+    "schemas": {
+      "StartRunSessionInput": {
+        "type": "object",
+        "required": ["tenantId", "deploymentId", "inputSummary"],
+        "properties": {
+          "tenantId": { "type": "string" },
+          "deploymentId": { "type": "string" },
+          "correlationId": { "type": "string" },
+          "inputSummary": { "type": "string" },
+          "traceCorrelation": { "type": "object" }
+        }
+      },
+      "CompleteRunSessionInput": {
+        "type": "object",
+        "required": ["sessionId", "status"],
+        "properties": {
+          "sessionId": { "type": "string" },
+          "status": { "enum": ["completed", "failed"] },
+          "outputSummary": { "type": "string" }
+        }
+      },
+      "RequestHumanApprovalInput": {
+        "type": "object",
+        "required": ["sessionId", "checkpoint"],
+        "properties": {
+          "sessionId": { "type": "string" },
+          "checkpoint": { "type": "object" },
+          "actor": { "type": "object" }
+        }
+      },
+      "ResolveApprovalRequestInput": {
+        "type": "object",
+        "required": ["approvalRequestId", "decision"],
+        "properties": {
+          "approvalRequestId": { "type": "string" },
+          "decision": {
+            "enum": ["pending", "approved", "rejected", "expired", "cancelled"]
+          },
+          "resolutionComment": { "type": "string" },
+          "actor": { "type": "object" }
+        }
+      },
+      "TransitionDeploymentInput": {
+        "type": "object",
+        "required": ["deploymentId", "targetStatus"],
+        "properties": {
+          "deploymentId": { "type": "string" },
+          "targetStatus": {
+            "enum": ["provisioning", "active", "paused", "draining", "failed", "retired"]
+          },
+          "actor": { "type": "object" },
+          "reason": { "type": "string" }
+        }
+      },
+      "RollbackDeploymentInput": {
+        "type": "object",
+        "required": ["deploymentId", "targetBlueprintId"],
+        "properties": {
+          "deploymentId": { "type": "string" },
+          "targetBlueprintId": { "type": "string" },
+          "actor": { "type": "object" },
+          "reason": { "type": "string" }
+        }
+      },
+      "CipIngestEvent": {
+        "oneOf": [
           {
-            "name": "sessionId",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string" }
-          }
-        ],
-        "responses": {
-          "200": { "description": "Replayed run session." }
-        }
-      }
-    },
-    "/audit-events": {
-      "get": {
-        "operationId": "getAuditEvents",
-        "parameters": [
+            "type": "object",
+            "required": ["kind", "type"],
+            "properties": {
+              "kind": { "const": "run_event" },
+              "type": { "type": "string" },
+              "actor": { "type": "object" },
+              "payload": { "type": "object" },
+              "traceCorrelation": { "type": "object" },
+              "occurredAt": { "type": "string", "format": "date-time" }
+            }
+          },
           {
-            "name": "tenantId",
-            "in": "query",
-            "required": false,
-            "schema": { "type": "string" }
-          }
-        ],
-        "responses": {
-          "200": { "description": "Audit events." }
-        }
-      }
-    },
-    "/policies/evaluate": {
-      "post": {
-        "operationId": "evaluatePolicy",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["policyPackId", "context"],
-                "properties": {
-                  "policyPackId": { "type": "string" },
-                  "context": { "type": "object" }
-                }
-              }
+            "type": "object",
+            "required": ["kind", "category", "action", "actor", "payload"],
+            "properties": {
+              "kind": { "const": "audit_event" },
+              "category": { "type": "string" },
+              "action": { "type": "string" },
+              "severity": { "type": "string" },
+              "actor": { "type": "object" },
+              "payload": { "type": "object" },
+              "deploymentId": { "type": "string" },
+              "occurredAt": { "type": "string", "format": "date-time" }
             }
           }
-        },
-        "responses": {
-          "200": { "description": "Policy decision." },
-          "404": { "description": "Unknown policy pack." }
-        }
-      }
-    },
-    "/connectors": {
-      "get": {
-        "operationId": "getConnectors",
-        "responses": {
-          "200": { "description": "Registered connectors." }
-        }
-      }
-    },
-    "/connectors/{connectorKey}/healthcheck": {
-      "post": {
-        "operationId": "postConnectorHealthcheck",
-        "parameters": [
-          {
-            "name": "connectorKey",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string" }
+        ]
+      },
+      "CipEventBatch": {
+        "type": "object",
+        "required": ["tenantId", "sessionId", "events"],
+        "properties": {
+          "tenantId": { "type": "string" },
+          "sessionId": { "type": "string" },
+          "events": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/CipIngestEvent" }
           }
-        ],
-        "responses": {
-          "200": { "description": "Connector healthcheck result." },
-          "404": { "description": "Unknown connector." }
         }
       }
     }
