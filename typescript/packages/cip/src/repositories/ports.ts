@@ -1,22 +1,32 @@
 import type {
   AgentBlueprint,
+  ApprovalRequest,
   AuditEvent,
   ConnectorBinding,
   ConnectorDefinition,
+  ConnectorRateBucket,
   CredentialBinding,
   DeploymentRecord,
+  EvidenceBundle,
+  GuardrailDefinition,
   PolicyPack,
+  RunEvent,
   RunSession,
   TenantRecord,
 } from "../domain/records.js";
 import type {
   AgentBlueprintFilter,
+  ApprovalRequestFilter,
   AuditEventFilter,
   ConnectorBindingFilter,
   ConnectorDefinitionFilter,
+  ConnectorRateBucketFilter,
   CredentialBindingFilter,
   DeploymentFilter,
+  EvidenceBundleFilter,
+  GuardrailDefinitionFilter,
   PolicyPackFilter,
+  RunEventFilter,
   RunSessionFilter,
   TenantFilter,
 } from "./filters.js";
@@ -34,6 +44,12 @@ export interface AuditEventRepository {
   list(filter?: AuditEventFilter): Promise<AuditEvent[]>;
 }
 
+export interface RunEventRepository {
+  append(event: RunEvent): Promise<RunEvent>;
+  getById(id: string): Promise<RunEvent | null>;
+  list(filter?: RunEventFilter): Promise<RunEvent[]>;
+}
+
 export interface CipRepositories {
   tenants: MutableRepository<TenantRecord, TenantFilter>;
   connectorDefinitions: MutableRepository<
@@ -46,8 +62,19 @@ export interface CipRepositories {
   >;
   connectorBindings: MutableRepository<ConnectorBinding, ConnectorBindingFilter>;
   policyPacks: MutableRepository<PolicyPack, PolicyPackFilter>;
+  guardrailDefinitions: MutableRepository<
+    GuardrailDefinition,
+    GuardrailDefinitionFilter
+  >;
   agentBlueprints: MutableRepository<AgentBlueprint, AgentBlueprintFilter>;
   deployments: MutableRepository<DeploymentRecord, DeploymentFilter>;
   runSessions: MutableRepository<RunSession, RunSessionFilter>;
+  approvalRequests: MutableRepository<ApprovalRequest, ApprovalRequestFilter>;
+  evidenceBundles: MutableRepository<EvidenceBundle, EvidenceBundleFilter>;
+  connectorRateBuckets: MutableRepository<
+    ConnectorRateBucket,
+    ConnectorRateBucketFilter
+  >;
   auditEvents: AuditEventRepository;
+  runEvents: RunEventRepository;
 }

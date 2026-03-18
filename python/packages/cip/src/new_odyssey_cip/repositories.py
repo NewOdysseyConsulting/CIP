@@ -5,15 +5,20 @@ from typing import Generic, Protocol, TypeVar
 
 from .records import (
     AgentBlueprint,
+    ApprovalRequest,
     AuditEvent,
     ConnectorBinding,
     ConnectorDefinition,
+    ConnectorRateBucket,
     CredentialBinding,
     DeploymentRecord,
     Environment,
+    EvidenceBundle,
+    GuardrailDefinition,
     PolicyDomain,
     PolicyPack,
     ProductTier,
+    RunEvent,
     RunSession,
     TenantRecord,
 )
@@ -32,6 +37,7 @@ class TenantFilter:
 @dataclass(slots=True)
 class ConnectorDefinitionFilter:
     key: str | None = None
+    version: str | None = None
     platform: str | None = None
     runtime: str | None = None
     capability: str | None = None
@@ -63,10 +69,20 @@ class PolicyPackFilter:
 
 
 @dataclass(slots=True)
+class GuardrailDefinitionFilter:
+    key: str | None = None
+    version: str | None = None
+    status: str | None = None
+
+
+@dataclass(slots=True)
 class AgentBlueprintFilter:
+    key: str | None = None
+    version: str | None = None
     domain: PolicyDomain | None = None
     product_tier: ProductTier | None = None
     status: str | None = None
+    release_state: str | None = None
 
 
 @dataclass(slots=True)
@@ -85,6 +101,14 @@ class RunSessionFilter:
 
 
 @dataclass(slots=True)
+class ApprovalRequestFilter:
+    tenant_id: str | None = None
+    deployment_id: str | None = None
+    session_id: str | None = None
+    status: str | None = None
+
+
+@dataclass(slots=True)
 class AuditEventFilter:
     tenant_id: str | None = None
     deployment_id: str | None = None
@@ -92,6 +116,29 @@ class AuditEventFilter:
     category: str | None = None
     severity: str | None = None
     action: str | None = None
+
+
+@dataclass(slots=True)
+class RunEventFilter:
+    tenant_id: str | None = None
+    deployment_id: str | None = None
+    session_id: str | None = None
+    type: str | None = None
+
+
+@dataclass(slots=True)
+class EvidenceBundleFilter:
+    tenant_id: str | None = None
+    deployment_id: str | None = None
+    session_id: str | None = None
+
+
+@dataclass(slots=True)
+class ConnectorRateBucketFilter:
+    provider: str | None = None
+    external_system_tenant: str | None = None
+    environment: Environment | None = None
+    api_family: str | None = None
 
 
 class MutableRepository(Protocol, Generic[TRecord, TFilter]):
@@ -112,13 +159,26 @@ class AuditEventRepository(Protocol):
     def list(self, record_filter: AuditEventFilter | None = None) -> list[AuditEvent]: ...
 
 
+class RunEventRepository(Protocol):
+    def append(self, event: RunEvent) -> RunEvent: ...
+
+    def get_by_id(self, event_id: str) -> RunEvent | None: ...
+
+    def list(self, record_filter: RunEventFilter | None = None) -> list[RunEvent]: ...
+
+
 class CipRepositories(Protocol):
     tenants: MutableRepository[TenantRecord, TenantFilter]
     connector_definitions: MutableRepository[ConnectorDefinition, ConnectorDefinitionFilter]
     credential_bindings: MutableRepository[CredentialBinding, CredentialBindingFilter]
     connector_bindings: MutableRepository[ConnectorBinding, ConnectorBindingFilter]
     policy_packs: MutableRepository[PolicyPack, PolicyPackFilter]
+    guardrail_definitions: MutableRepository[GuardrailDefinition, GuardrailDefinitionFilter]
     agent_blueprints: MutableRepository[AgentBlueprint, AgentBlueprintFilter]
     deployments: MutableRepository[DeploymentRecord, DeploymentFilter]
     run_sessions: MutableRepository[RunSession, RunSessionFilter]
+    approval_requests: MutableRepository[ApprovalRequest, ApprovalRequestFilter]
+    evidence_bundles: MutableRepository[EvidenceBundle, EvidenceBundleFilter]
+    connector_rate_buckets: MutableRepository[ConnectorRateBucket, ConnectorRateBucketFilter]
     audit_events: AuditEventRepository
+    run_events: RunEventRepository

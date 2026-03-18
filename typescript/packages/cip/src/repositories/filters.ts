@@ -1,4 +1,12 @@
 import type {
+  AgentBlueprint,
+  ApprovalRequest,
+  AuditEvent,
+  ConnectorRateBucket,
+  EvidenceBundle,
+  GuardrailDefinition,
+  PolicyDomain,
+  RunEvent,
   ConnectorBinding,
   ConnectorDefinition,
   CredentialBinding,
@@ -17,6 +25,7 @@ export interface TenantFilter {
 
 export interface ConnectorDefinitionFilter {
   key?: string;
+  version?: string;
   platform?: string;
   runtime?: ConnectorDefinition["runtime"];
   capability?: string;
@@ -45,9 +54,12 @@ export interface PolicyPackFilter {
 }
 
 export interface AgentBlueprintFilter {
-  domain?: PolicyPack["domain"];
+  key?: string;
+  version?: string;
+  domain?: PolicyDomain;
   productTier?: ProductTier;
   status?: "draft" | "active" | "deprecated";
+  releaseState?: AgentBlueprint["releaseState"];
 }
 
 export interface DeploymentFilter {
@@ -67,7 +79,40 @@ export interface AuditEventFilter {
   tenantId?: string;
   deploymentId?: string;
   sessionId?: string;
-  category?: "tenant" | "connector" | "policy" | "deployment" | "session" | "security";
+  category?: AuditEvent["category"];
   severity?: "info" | "warn" | "error" | "critical";
   action?: string;
+}
+
+export interface GuardrailDefinitionFilter {
+  key?: GuardrailDefinition["key"];
+  version?: string;
+  status?: GuardrailDefinition["status"];
+}
+
+export interface ApprovalRequestFilter {
+  tenantId?: string;
+  deploymentId?: string;
+  sessionId?: string;
+  status?: ApprovalRequest["status"];
+}
+
+export interface RunEventFilter {
+  tenantId?: string;
+  deploymentId?: string;
+  sessionId?: string;
+  type?: RunEvent["type"];
+}
+
+export interface EvidenceBundleFilter {
+  tenantId?: string;
+  deploymentId?: string;
+  sessionId?: string;
+}
+
+export interface ConnectorRateBucketFilter {
+  provider?: string;
+  externalSystemTenant?: string;
+  environment?: ConnectorRateBucket["environment"];
+  apiFamily?: string;
 }

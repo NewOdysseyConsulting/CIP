@@ -1,22 +1,32 @@
 import type {
   AgentBlueprint,
+  ApprovalRequest,
   AuditEvent,
   ConnectorBinding,
   ConnectorDefinition,
+  ConnectorRateBucket,
   CredentialBinding,
   DeploymentRecord,
+  EvidenceBundle,
+  GuardrailDefinition,
   PolicyPack,
+  RunEvent,
   RunSession,
   TenantRecord,
 } from "../../domain/records.js";
 import type {
   AgentBlueprintFilter,
+  ApprovalRequestFilter,
   AuditEventFilter,
   ConnectorBindingFilter,
   ConnectorDefinitionFilter,
+  ConnectorRateBucketFilter,
   CredentialBindingFilter,
   DeploymentFilter,
+  EvidenceBundleFilter,
+  GuardrailDefinitionFilter,
   PolicyPackFilter,
+  RunEventFilter,
   RunSessionFilter,
   TenantFilter,
 } from "../filters.js";
@@ -24,6 +34,7 @@ import type {
   AuditEventRepository,
   CipRepositories,
   MutableRepository,
+  RunEventRepository,
 } from "../ports.js";
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -107,6 +118,40 @@ class InMemoryAuditEventRepository implements AuditEventRepository {
   }
 }
 
+class InMemoryRunEventRepository implements RunEventRepository {
+  private readonly events = new Map<string, RunEvent>();
+
+  async append(event: RunEvent): Promise<RunEvent> {
+    const persisted = clone(event);
+    this.events.set(event.id, persisted);
+    return clone(persisted);
+  }
+
+  async getById(id: string): Promise<RunEvent | null> {
+    const event = this.events.get(id);
+    return event ? clone(event) : null;
+  }
+
+  async list(filter?: RunEventFilter): Promise<RunEvent[]> {
+    const events = Array.from(this.events.values());
+    const filtered =
+      filter === undefined
+        ? events
+        : events.filter((event) => {
+            return (
+              matchesOptional(event.tenantId, filter.tenantId) &&
+              matchesOptional(event.deploymentId, filter.deploymentId) &&
+              matchesOptional(event.sessionId, filter.sessionId) &&
+              matchesOptional(event.type, filter.type)
+            );
+          });
+
+    return filtered
+      .sort((left, right) => left.sequence - right.sequence)
+      .map((event) => clone(event));
+  }
+}
+
 const tenantMatches = (record: TenantRecord, filter: TenantFilter): boolean =>
   matchesOptional(record.status, filter.status) &&
   matchesOptional(record.productTier, filter.productTier) &&
@@ -117,6 +162,7 @@ const connectorDefinitionMatches = (
   filter: ConnectorDefinitionFilter,
 ): boolean =>
   matchesOptional(record.key, filter.key) &&
+  matchesOptional(record.version, filter.version) &&
   matchesOptional(record.platform, filter.platform) &&
   matchesOptional(record.runtime, filter.runtime) &&
   matchesOptional(record.status, filter.status) &&
@@ -153,9 +199,12 @@ const agentBlueprintMatches = (
   record: AgentBlueprint,
   filter: AgentBlueprintFilter,
 ): boolean =>
+  matchesOptional(record.key, filter.key) &&
+  matchesOptional(record.version, filter.version) &&
   matchesOptional(record.domain, filter.domain) &&
   matchesOptional(record.productTier, filter.productTier) &&
-  matchesOptional(record.status, filter.status);
+  matchesOptional(record.status, filter.status) &&
+  matchesOptional(record.releaseState, filter.releaseState);
 
 const deploymentMatches = (
   record: DeploymentRecord,
@@ -174,6 +223,40 @@ const runSessionMatches = (
   matchesOptional(record.deploymentId, filter.deploymentId) &&
   matchesOptional(record.status, filter.status);
 
+const guardrailDefinitionMatches = (
+  record: GuardrailDefinition,
+  filter: GuardrailDefinitionFilter,
+): boolean =>
+  matchesOptional(record.key, filter.key) &&
+  matchesOptional(record.version, filter.version) &&
+  matchesOptional(record.status, filter.status);
+
+const approvalRequestMatches = (
+  record: ApprovalRequest,
+  filter: ApprovalRequestFilter,
+): boolean =>
+  matchesOptional(record.tenantId, filter.tenantId) &&
+  matchesOptional(record.deploymentId, filter.deploymentId) &&
+  matchesOptional(record.sessionId, filter.sessionId) &&
+  matchesOptional(record.status, filter.status);
+
+const evidenceBundleMatches = (
+  record: EvidenceBundle,
+  filter: EvidenceBundleFilter,
+): boolean =>
+  matchesOptional(record.tenantId, filter.tenantId) &&
+  matchesOptional(record.deploymentId, filter.deploymentId) &&
+  matchesOptional(record.sessionId, filter.sessionId);
+
+const connectorRateBucketMatches = (
+  record: ConnectorRateBucket,
+  filter: ConnectorRateBucketFilter,
+): boolean =>
+  matchesOptional(record.provider, filter.provider) &&
+  matchesOptional(record.externalSystemTenant, filter.externalSystemTenant) &&
+  matchesOptional(record.environment, filter.environment) &&
+  matchesOptional(record.apiFamily, filter.apiFamily);
+
 export const createInMemoryCipRepositories = (): CipRepositories => ({
   tenants: new InMemoryMutableRepository<TenantRecord, TenantFilter>(tenantMatches),
   connectorDefinitions: new InMemoryMutableRepository<
@@ -191,6 +274,10 @@ export const createInMemoryCipRepositories = (): CipRepositories => ({
   policyPacks: new InMemoryMutableRepository<PolicyPack, PolicyPackFilter>(
     policyPackMatches,
   ),
+  guardrailDefinitions: new InMemoryMutableRepository<
+    GuardrailDefinition,
+    GuardrailDefinitionFilter
+  >(guardrailDefinitionMatches),
   agentBlueprints: new InMemoryMutableRepository<
     AgentBlueprint,
     AgentBlueprintFilter
@@ -202,5 +289,18 @@ export const createInMemoryCipRepositories = (): CipRepositories => ({
   runSessions: new InMemoryMutableRepository<RunSession, RunSessionFilter>(
     runSessionMatches,
   ),
+  approvalRequests: new InMemoryMutableRepository<
+    ApprovalRequest,
+    ApprovalRequestFilter
+  >(approvalRequestMatches),
+  evidenceBundles: new InMemoryMutableRepository<
+    EvidenceBundle,
+    EvidenceBundleFilter
+  >(evidenceBundleMatches),
+  connectorRateBuckets: new InMemoryMutableRepository<
+    ConnectorRateBucket,
+    ConnectorRateBucketFilter
+  >(connectorRateBucketMatches),
   auditEvents: new InMemoryAuditEventRepository(),
+  runEvents: new InMemoryRunEventRepository(),
 });

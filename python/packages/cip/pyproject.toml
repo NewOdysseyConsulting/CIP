@@ -9,7 +9,8 @@ description = "Common Infrastructure Protocol for enterprise AI agents."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "openai-agents>=0.12.4,<1"
+  "openai-agents>=0.12.4,<1",
+  "psycopg>=3.2,<4"
 ]
 
 [tool.setuptools]

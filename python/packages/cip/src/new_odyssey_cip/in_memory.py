@@ -6,26 +6,37 @@ from typing import Callable, Generic, TypeVar
 
 from .records import (
     AgentBlueprint,
+    ApprovalRequest,
     AuditEvent,
     ConnectorBinding,
     ConnectorDefinition,
+    ConnectorRateBucket,
     CredentialBinding,
     DeploymentRecord,
+    EvidenceBundle,
+    GuardrailDefinition,
     PolicyPack,
+    RunEvent,
     RunSession,
     TenantRecord,
 )
 from .repositories import (
     AgentBlueprintFilter,
+    ApprovalRequestFilter,
     AuditEventFilter,
     AuditEventRepository,
     CipRepositories,
     ConnectorBindingFilter,
     ConnectorDefinitionFilter,
+    ConnectorRateBucketFilter,
     CredentialBindingFilter,
     DeploymentFilter,
+    EvidenceBundleFilter,
+    GuardrailDefinitionFilter,
     MutableRepository,
     PolicyPackFilter,
+    RunEventFilter,
+    RunEventRepository,
     RunSessionFilter,
     TenantFilter,
 )
@@ -53,9 +64,11 @@ class InMemoryMutableRepository(Generic[TRecord, TFilter], MutableRepository[TRe
 
     def list(self, record_filter: TFilter | None = None) -> list[TRecord]:
         values = list(self._records.values())
-        filtered = values if record_filter is None else [
-            record for record in values if self._matches(record, record_filter)
-        ]
+        filtered = (
+            values
+            if record_filter is None
+            else [record for record in values if self._matches(record, record_filter)]
+        )
         return [deepcopy(record) for record in filtered]
 
     def save(self, record: TRecord) -> TRecord:
@@ -81,17 +94,51 @@ class InMemoryAuditEventRepository(AuditEventRepository):
 
     def list(self, record_filter: AuditEventFilter | None = None) -> list[AuditEvent]:
         events = list(self._events.values())
-        filtered = events if record_filter is None else [
-            event
-            for event in events
-            if _matches_optional(event.tenant_id, record_filter.tenant_id)
-            and _matches_optional(event.deployment_id, record_filter.deployment_id)
-            and _matches_optional(event.session_id, record_filter.session_id)
-            and _matches_optional(event.category, record_filter.category)
-            and _matches_optional(event.severity, record_filter.severity)
-            and _matches_optional(event.action, record_filter.action)
-        ]
+        filtered = (
+            events
+            if record_filter is None
+            else [
+                event
+                for event in events
+                if _matches_optional(event.tenant_id, record_filter.tenant_id)
+                and _matches_optional(event.deployment_id, record_filter.deployment_id)
+                and _matches_optional(event.session_id, record_filter.session_id)
+                and _matches_optional(event.category, record_filter.category)
+                and _matches_optional(event.severity, record_filter.severity)
+                and _matches_optional(event.action, record_filter.action)
+            ]
+        )
         filtered.sort(key=lambda event: event.occurred_at)
+        return [deepcopy(event) for event in filtered]
+
+
+class InMemoryRunEventRepository(RunEventRepository):
+    def __init__(self) -> None:
+        self._events: dict[str, RunEvent] = {}
+
+    def append(self, event: RunEvent) -> RunEvent:
+        self._events[event.id] = deepcopy(event)
+        return deepcopy(event)
+
+    def get_by_id(self, event_id: str) -> RunEvent | None:
+        event = self._events.get(event_id)
+        return deepcopy(event) if event is not None else None
+
+    def list(self, record_filter: RunEventFilter | None = None) -> list[RunEvent]:
+        events = list(self._events.values())
+        filtered = (
+            events
+            if record_filter is None
+            else [
+                event
+                for event in events
+                if _matches_optional(event.tenant_id, record_filter.tenant_id)
+                and _matches_optional(event.deployment_id, record_filter.deployment_id)
+                and _matches_optional(event.session_id, record_filter.session_id)
+                and _matches_optional(event.type, record_filter.type)
+            ]
+        )
+        filtered.sort(key=lambda event: event.sequence)
         return [deepcopy(event) for event in filtered]
 
 
@@ -109,6 +156,7 @@ def _connector_definition_matches(
 ) -> bool:
     return (
         _matches_optional(record.key, record_filter.key)
+        and _matches_optional(record.version, record_filter.version)
         and _matches_optional(record.platform, record_filter.platform)
         and _matches_optional(record.runtime, record_filter.runtime)
         and _matches_optional(record.status, record_filter.status)
@@ -149,14 +197,28 @@ def _policy_pack_matches(record: PolicyPack, record_filter: PolicyPackFilter) ->
     )
 
 
+def _guardrail_definition_matches(
+    record: GuardrailDefinition,
+    record_filter: GuardrailDefinitionFilter,
+) -> bool:
+    return (
+        _matches_optional(record.key, record_filter.key)
+        and _matches_optional(record.version, record_filter.version)
+        and _matches_optional(record.status, record_filter.status)
+    )
+
+
 def _agent_blueprint_matches(
     record: AgentBlueprint,
     record_filter: AgentBlueprintFilter,
 ) -> bool:
     return (
-        _matches_optional(record.domain, record_filter.domain)
+        _matches_optional(record.key, record_filter.key)
+        and _matches_optional(record.version, record_filter.version)
+        and _matches_optional(record.domain, record_filter.domain)
         and _matches_optional(record.product_tier, record_filter.product_tier)
         and _matches_optional(record.status, record_filter.status)
+        and _matches_optional(record.release_state, record_filter.release_state)
     )
 
 
@@ -177,6 +239,41 @@ def _run_session_matches(record: RunSession, record_filter: RunSessionFilter) ->
     )
 
 
+def _approval_request_matches(
+    record: ApprovalRequest,
+    record_filter: ApprovalRequestFilter,
+) -> bool:
+    return (
+        _matches_optional(record.tenant_id, record_filter.tenant_id)
+        and _matches_optional(record.deployment_id, record_filter.deployment_id)
+        and _matches_optional(record.session_id, record_filter.session_id)
+        and _matches_optional(record.status, record_filter.status)
+    )
+
+
+def _evidence_bundle_matches(
+    record: EvidenceBundle,
+    record_filter: EvidenceBundleFilter,
+) -> bool:
+    return (
+        _matches_optional(record.tenant_id, record_filter.tenant_id)
+        and _matches_optional(record.deployment_id, record_filter.deployment_id)
+        and _matches_optional(record.session_id, record_filter.session_id)
+    )
+
+
+def _connector_rate_bucket_matches(
+    record: ConnectorRateBucket,
+    record_filter: ConnectorRateBucketFilter,
+) -> bool:
+    return (
+        _matches_optional(record.provider, record_filter.provider)
+        and _matches_optional(record.external_system_tenant, record_filter.external_system_tenant)
+        and _matches_optional(record.environment, record_filter.environment)
+        and _matches_optional(record.api_family, record_filter.api_family)
+    )
+
+
 @dataclass(slots=True)
 class InMemoryCipRepositories(CipRepositories):
     tenants: MutableRepository[TenantRecord, TenantFilter]
@@ -184,10 +281,15 @@ class InMemoryCipRepositories(CipRepositories):
     credential_bindings: MutableRepository[CredentialBinding, CredentialBindingFilter]
     connector_bindings: MutableRepository[ConnectorBinding, ConnectorBindingFilter]
     policy_packs: MutableRepository[PolicyPack, PolicyPackFilter]
+    guardrail_definitions: MutableRepository[GuardrailDefinition, GuardrailDefinitionFilter]
     agent_blueprints: MutableRepository[AgentBlueprint, AgentBlueprintFilter]
     deployments: MutableRepository[DeploymentRecord, DeploymentFilter]
     run_sessions: MutableRepository[RunSession, RunSessionFilter]
+    approval_requests: MutableRepository[ApprovalRequest, ApprovalRequestFilter]
+    evidence_bundles: MutableRepository[EvidenceBundle, EvidenceBundleFilter]
+    connector_rate_buckets: MutableRepository[ConnectorRateBucket, ConnectorRateBucketFilter]
     audit_events: AuditEventRepository
+    run_events: RunEventRepository
 
 
 def create_in_memory_cip_repositories() -> InMemoryCipRepositories:
@@ -197,8 +299,13 @@ def create_in_memory_cip_repositories() -> InMemoryCipRepositories:
         credential_bindings=InMemoryMutableRepository(_credential_binding_matches),
         connector_bindings=InMemoryMutableRepository(_connector_binding_matches),
         policy_packs=InMemoryMutableRepository(_policy_pack_matches),
+        guardrail_definitions=InMemoryMutableRepository(_guardrail_definition_matches),
         agent_blueprints=InMemoryMutableRepository(_agent_blueprint_matches),
         deployments=InMemoryMutableRepository(_deployment_matches),
         run_sessions=InMemoryMutableRepository(_run_session_matches),
+        approval_requests=InMemoryMutableRepository(_approval_request_matches),
+        evidence_bundles=InMemoryMutableRepository(_evidence_bundle_matches),
+        connector_rate_buckets=InMemoryMutableRepository(_connector_rate_bucket_matches),
         audit_events=InMemoryAuditEventRepository(),
+        run_events=InMemoryRunEventRepository(),
     )

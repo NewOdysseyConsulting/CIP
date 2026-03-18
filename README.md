@@ -2,12 +2,16 @@
 
 Common Infrastructure Protocol (CIP) is New Odyssey's shared infrastructure layer for enterprise AI agents.
 
-This repository is now a polyglot monorepo with:
+This repository is a polyglot monorepo for CIP phase 1 with:
 
 - a TypeScript package for Node.js teams
 - a Python package for backend and orchestration teams
 - a shared schema directory for protocol-level assets
 - OpenAI Agents SDK integration in both language packages
+- versioned control-plane records and immutable blueprint releases
+- deployment lifecycle control, HITL approvals, and evidence projection
+- Postgres repository factories plus in-memory adapters for local development
+- Workday and Dynamics 365 connector stubs with shared quota coordination
 
 CIP is not the customer-facing product. It is the reusable protocol and control-plane layer underneath Pegasus, Pantheon, and Phoenix.
 
@@ -28,6 +32,10 @@ The control plane in this repo is the infrastructure slice that runtime SDKs do 
 - policy attachment
 - deployment metadata
 - audit evidence
+- deployment pause/drain/rollback state
+- approval-request persistence for human-in-the-loop
+- connector-level aggregate rate limiting
+- replayable run events and evidence bundles
 
 ## Monorepo Layout
 
@@ -78,9 +86,10 @@ TypeScript package published as `@new-odyssey/cip`.
 Includes:
 
 - control-plane record types
-- repository contracts and in-memory repositories
-- `CipControlPlane` orchestration service
-- `createCipControlPlaneAgent()` built on `@openai/agents`
+- repository contracts, in-memory repositories, and Postgres repository factories
+- `CipControlPlane` orchestration service with blueprint versioning, deployment transitions, approvals, replay, and evidence bundles
+- policy evaluator, guardrail catalog, secret resolvers, connector stubs, admin API handlers, telemetry types
+- `createCipControlPlaneAgent()` and `OpenAIAgentsRuntimeAdapter` built on `@openai/agents`
 
 ### `python/packages/cip`
 
@@ -89,9 +98,10 @@ Python package published as `new-odyssey-cip`.
 Includes:
 
 - dataclass-based control-plane records
-- repository protocols and in-memory repositories
-- `CipControlPlane` orchestration service
-- `create_cip_control_plane_agent()` built on `openai-agents`
+- repository protocols, in-memory repositories, and Postgres repository factory
+- `CipControlPlane` orchestration service with the same phase-1 lifecycle semantics as the TypeScript package
+- policy evaluator, guardrail catalog, secret resolvers, connector stubs, admin API handlers, telemetry types
+- `create_cip_control_plane_agent()` and `OpenAIAgentsRuntimeAdapter` built on `openai-agents`
 
 ## Development
 
@@ -123,9 +133,11 @@ Open source here:
 
 - protocol records
 - repository interfaces
-- in-memory adapters
+- in-memory and Postgres repository adapters
 - control-plane orchestration
-- OpenAI Agents SDK examples/adapters
+- policy evaluation and default guardrail catalog
+- connector stubs for Workday and Dynamics 365
+- OpenAI Agents SDK runtime adapters and admin API stubs
 
 Not included here:
 
@@ -135,12 +147,19 @@ Not included here:
 - proprietary policy engines
 - cross-run enterprise analytics
 
-## Next Steps
+## Phase 1 Assets
 
-- add database-backed repositories
-- add Workday MCP connector packages
-- add runtime-specific tracing hooks
-- split connectors into their own packages as the monorepo grows
+- [schemas/cip-control-plane.schema.json](/Users/ademolaafolabi/Documents/GitHub/CIP/schemas/cip-control-plane.schema.json)
+- [schemas/cip-admin-api.openapi.json](/Users/ademolaafolabi/Documents/GitHub/CIP/schemas/cip-admin-api.openapi.json)
+- [sql/postgres/001_phase1.sql](/Users/ademolaafolabi/Documents/GitHub/CIP/sql/postgres/001_phase1.sql)
+
+## Validation
+
+```bash
+npm run test:ts
+npm run test:py
+npm test
+```
 
 ## License
 

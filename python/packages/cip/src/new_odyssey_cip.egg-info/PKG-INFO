@@ -5,6 +5,7 @@ Summary: Common Infrastructure Protocol for enterprise AI agents.
 Requires-Python: >=3.10
 Description-Content-Type: text/markdown
 Requires-Dist: openai-agents<1,>=0.12.4
+Requires-Dist: psycopg<4,>=3.2
 
 # new-odyssey-cip
 

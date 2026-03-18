@@ -1,0 +1,123 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "CIP Admin API",
+    "version": "0.1.0",
+    "description": "Phase 1 admin API contract for the CIP control plane."
+  },
+  "paths": {
+    "/tenants/{tenantId}": {
+      "get": {
+        "operationId": "getTenant",
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Tenant record or null." }
+        }
+      }
+    },
+    "/deployments": {
+      "get": {
+        "operationId": "getDeployments",
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Deployment records." }
+        }
+      }
+    },
+    "/sessions/{sessionId}": {
+      "get": {
+        "operationId": "getSession",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Replayed run session." }
+        }
+      }
+    },
+    "/audit-events": {
+      "get": {
+        "operationId": "getAuditEvents",
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Audit events." }
+        }
+      }
+    },
+    "/policies/evaluate": {
+      "post": {
+        "operationId": "evaluatePolicy",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["policyPackId", "context"],
+                "properties": {
+                  "policyPackId": { "type": "string" },
+                  "context": { "type": "object" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Policy decision." },
+          "404": { "description": "Unknown policy pack." }
+        }
+      }
+    },
+    "/connectors": {
+      "get": {
+        "operationId": "getConnectors",
+        "responses": {
+          "200": { "description": "Registered connectors." }
+        }
+      }
+    },
+    "/connectors/{connectorKey}/healthcheck": {
+      "post": {
+        "operationId": "postConnectorHealthcheck",
+        "parameters": [
+          {
+            "name": "connectorKey",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Connector healthcheck result." },
+          "404": { "description": "Unknown connector." }
+        }
+      }
+    }
+  }
+}

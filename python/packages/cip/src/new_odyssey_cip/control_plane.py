@@ -5,25 +5,36 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from .observability import MetricEvent, TelemetrySink
 from .records import (
     AgentBlueprint,
+    ApprovalRequest,
     AuditActor,
     AuditEvent,
     BaseRecord,
+    BlueprintDependencySnapshot,
     ConnectorBinding,
     ConnectorDefinition,
     CredentialBinding,
+    DependencyVersionReference,
     DeploymentRecord,
+    DeploymentStatus,
     Environment,
+    EvidenceBundle,
+    GuardrailDefinition,
     PolicyDomain,
     PolicyPack,
     PolicyRule,
     ProductTier,
+    RunEvent,
     RunSession,
+    RunSessionStatus,
     RuntimeProfile,
     TenantRecord,
+    TraceCorrelation,
 )
 from .repositories import CipRepositories
+from .runtime import HumanApprovalCheckpoint, HumanApprovalDecision
 
 
 class CipControlPlaneError(Exception):
@@ -62,6 +73,40 @@ def _record_kwargs(record: BaseRecord) -> dict[str, Any]:
     }
 
 
+def _system_actor(actor_id: str = "cip-control-plane") -> AuditActor:
+    return AuditActor(type="system", id=actor_id)
+
+
+def _parse_semver(value: str) -> tuple[int, int, int]:
+    parts = value.split(".")
+    major = int(parts[0]) if len(parts) > 0 and parts[0].isdigit() else 1
+    minor = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+    patch = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 0
+    return major, minor, patch
+
+
+def _increment_patch_version(value: str | None) -> str:
+    if value is None:
+        return "1.0.0"
+    major, minor, patch = _parse_semver(value)
+    return f"{major}.{minor}.{patch + 1}"
+
+
+ALLOWED_DEPLOYMENT_TRANSITIONS: dict[DeploymentStatus, tuple[DeploymentStatus, ...]] = {
+    "provisioning": ("active", "failed", "retired"),
+    "active": ("paused", "draining", "failed", "retired"),
+    "paused": ("active", "failed", "retired"),
+    "draining": ("paused", "failed", "retired"),
+    "failed": ("provisioning", "retired"),
+    "retired": (),
+}
+
+
+class _NoopTelemetrySink(TelemetrySink):
+    def record(self, event: MetricEvent) -> None:
+        del event
+
+
 @dataclass(slots=True)
 class RegisterTenantInput:
     slug: str
@@ -83,6 +128,7 @@ class RegisterConnectorDefinitionInput:
     source: str
     capabilities: list[str]
     record_id: str | None = None
+    version: str | None = None
     metadata: dict[str, Any] | None = None
     status: str = "active"
 
@@ -127,6 +173,17 @@ class PublishPolicyPackInput:
 
 
 @dataclass(slots=True)
+class PublishGuardrailDefinitionInput:
+    key: str
+    name: str
+    configuration: dict[str, Any]
+    record_id: str | None = None
+    version: str | None = None
+    description: str | None = None
+    status: str = "active"
+
+
+@dataclass(slots=True)
 class RegisterAgentBlueprintInput:
     key: str
     name: str
@@ -137,9 +194,13 @@ class RegisterAgentBlueprintInput:
     connector_definition_ids: list[str]
     policy_pack_ids: list[str]
     record_id: str | None = None
+    version: str | None = None
+    guardrail_definition_ids: list[str] | None = None
+    release_state: str = "released"
+    supersedes_blueprint_id: str | None = None
     handoff_targets: list[str] | None = None
     structured_output: str | None = None
-    status: str = "active"
+    status: str | None = None
 
 
 @dataclass(slots=True)
@@ -151,7 +212,23 @@ class DeployAgentInput:
     record_id: str | None = None
     policy_pack_ids: list[str] | None = None
     tags: list[str] | None = None
-    status: str = "active"
+    status: str = "provisioning"
+
+
+@dataclass(slots=True)
+class TransitionDeploymentInput:
+    deployment_id: str
+    target_status: DeploymentStatus
+    actor: AuditActor | None = None
+    reason: str | None = None
+
+
+@dataclass(slots=True)
+class RollbackDeploymentInput:
+    deployment_id: str
+    target_blueprint_id: str
+    actor: AuditActor | None = None
+    reason: str | None = None
 
 
 @dataclass(slots=True)
@@ -161,6 +238,7 @@ class StartRunSessionInput:
     input_summary: str
     record_id: str | None = None
     correlation_id: str | None = None
+    trace_correlation: TraceCorrelation | None = None
 
 
 @dataclass(slots=True)
@@ -170,9 +248,47 @@ class CompleteRunSessionInput:
     output_summary: str | None = None
 
 
+@dataclass(slots=True)
+class AppendRunEventInput:
+    session_id: str
+    type: str
+    actor: AuditActor | None = None
+    payload: dict[str, Any] | None = None
+    trace_correlation: TraceCorrelation | None = None
+
+
+@dataclass(slots=True)
+class RequestHumanApprovalInput:
+    session_id: str
+    checkpoint: HumanApprovalCheckpoint
+    actor: AuditActor | None = None
+
+
+@dataclass(slots=True)
+class ResolveApprovalRequestInput:
+    approval_request_id: str
+    decision: str
+    resolution_comment: str | None = None
+    actor: AuditActor | None = None
+
+
+@dataclass(slots=True)
+class ReplayedRunSession:
+    session: RunSession
+    run_events: list[RunEvent]
+    approval_requests: list[ApprovalRequest]
+    evidence_bundle: EvidenceBundle | None
+    reconstructed_status: RunSessionStatus
+
+
 class CipControlPlane:
-    def __init__(self, repositories: CipRepositories) -> None:
+    def __init__(
+        self,
+        repositories: CipRepositories,
+        telemetry_sink: TelemetrySink | None = None,
+    ) -> None:
         self.repositories = repositories
+        self._telemetry_sink = telemetry_sink or _NoopTelemetrySink()
 
     def register_tenant(self, input_data: RegisterTenantInput) -> TenantRecord:
         metadata = _build_record_metadata(input_data.record_id)
@@ -190,7 +306,7 @@ class CipControlPlane:
             tenant_id=tenant.id,
             category="tenant",
             action="tenant.registered",
-            actor=AuditActor(type="system", id="cip-control-plane"),
+            actor=_system_actor(),
             payload={"slug": tenant.slug, "product_tier": tenant.product_tier},
         )
         return tenant
@@ -199,10 +315,13 @@ class CipControlPlane:
         self,
         input_data: RegisterConnectorDefinitionInput,
     ) -> ConnectorDefinition:
+        existing = self.repositories.connector_definitions.list()
+        existing_versions = [record.version for record in existing if record.key == input_data.key]
         metadata = _build_record_metadata(input_data.record_id)
         connector_definition = ConnectorDefinition(
             **_record_kwargs(metadata),
             key=input_data.key,
+            version=input_data.version or _increment_patch_version(max(existing_versions) if existing_versions else None),
             platform=input_data.platform,
             display_name=input_data.display_name,
             runtime=input_data.runtime,
@@ -235,11 +354,8 @@ class CipControlPlane:
             tenant_id=input_data.tenant_id,
             category="security",
             action="credential.bound",
-            actor=AuditActor(type="system", id="cip-control-plane"),
-            payload={
-                "provider": input_data.provider,
-                "credential_binding_id": credential_binding.id,
-            },
+            actor=_system_actor(),
+            payload={"provider": input_data.provider, "credential_binding_id": credential_binding.id},
         )
         return credential_binding
 
@@ -248,16 +364,10 @@ class CipControlPlane:
         input_data: CreateConnectorBindingInput,
     ) -> ConnectorBinding:
         self._ensure_tenant_exists(input_data.tenant_id)
-        connector_definition = self._ensure_connector_definition_exists(
-            input_data.connector_definition_id
-        )
-        credential_binding = self._ensure_credential_binding_exists(
-            input_data.credential_binding_id
-        )
+        connector_definition = self._ensure_connector_definition_exists(input_data.connector_definition_id)
+        credential_binding = self._ensure_credential_binding_exists(input_data.credential_binding_id)
         if credential_binding.tenant_id != input_data.tenant_id:
-            raise CipControlPlaneError(
-                "connector bindings must use credentials from the same tenant"
-            )
+            raise CipControlPlaneError("connector bindings must use credentials from the same tenant")
 
         metadata = _build_record_metadata(input_data.record_id)
         connector_binding = ConnectorBinding(
@@ -276,7 +386,7 @@ class CipControlPlane:
             tenant_id=input_data.tenant_id,
             category="connector",
             action="connector.bound",
-            actor=AuditActor(type="system", id="cip-control-plane"),
+            actor=_system_actor(),
             payload={
                 "connector_binding_id": connector_binding.id,
                 "connector_definition_key": connector_definition.key,
@@ -305,21 +415,77 @@ class CipControlPlane:
             status=input_data.status,
         )
         self.repositories.policy_packs.save(policy_pack)
+        self._record_audit_event(
+            tenant_id=input_data.tenant_id or "shared",
+            category="policy",
+            action="policy_pack.published",
+            actor=_system_actor(),
+            payload={"policy_pack_id": policy_pack.id, "key": policy_pack.key, "version": policy_pack.version},
+        )
         return policy_pack
+
+    def publish_guardrail_definition(
+        self,
+        input_data: PublishGuardrailDefinitionInput,
+    ) -> GuardrailDefinition:
+        existing = self.repositories.guardrail_definitions.list()
+        existing_versions = [record.version for record in existing if record.key == input_data.key]
+        metadata = _build_record_metadata(input_data.record_id)
+        guardrail_definition = GuardrailDefinition(
+            **_record_kwargs(metadata),
+            key=input_data.key,
+            version=input_data.version or _increment_patch_version(max(existing_versions) if existing_versions else None),
+            name=input_data.name,
+            description=input_data.description,
+            configuration=input_data.configuration,
+            status=input_data.status,
+        )
+        self.repositories.guardrail_definitions.save(guardrail_definition)
+        self._record_audit_event(
+            tenant_id="shared",
+            category="policy",
+            action="guardrail_definition.published",
+            actor=_system_actor(),
+            payload={"guardrail_definition_id": guardrail_definition.id, "key": guardrail_definition.key, "version": guardrail_definition.version},
+        )
+        return guardrail_definition
 
     def register_agent_blueprint(
         self,
         input_data: RegisterAgentBlueprintInput,
     ) -> AgentBlueprint:
-        for connector_definition_id in input_data.connector_definition_ids:
+        connector_definitions = [
             self._ensure_connector_definition_exists(connector_definition_id)
-        for policy_pack_id in input_data.policy_pack_ids:
-            self._ensure_policy_pack_exists(policy_pack_id)
+            for connector_definition_id in input_data.connector_definition_ids
+        ]
+        policy_packs = [self._ensure_policy_pack_exists(policy_pack_id) for policy_pack_id in input_data.policy_pack_ids]
+        guardrail_definition_ids = input_data.guardrail_definition_ids or []
+        guardrail_definitions = [
+            self._ensure_guardrail_definition_exists(guardrail_definition_id)
+            for guardrail_definition_id in guardrail_definition_ids
+        ]
+        if input_data.supersedes_blueprint_id is not None:
+            self._ensure_agent_blueprint_exists(input_data.supersedes_blueprint_id)
+
+        existing = self.repositories.agent_blueprints.list()
+        key_versions = [record.version for record in existing if record.key == input_data.key]
+        version = input_data.version or _increment_patch_version(max(key_versions) if key_versions else None)
+        if any(record.key == input_data.key and record.version == version for record in existing):
+            raise CipControlPlaneError(f"agent blueprint {input_data.key}@{version} already exists")
 
         metadata = _build_record_metadata(input_data.record_id)
+        dependency_snapshot = BlueprintDependencySnapshot(
+            policy_packs=[DependencyVersionReference(id=record.id, key=record.key, version=record.version) for record in policy_packs],
+            guardrails=[DependencyVersionReference(id=record.id, key=record.key, version=record.version) for record in guardrail_definitions],
+            connector_manifests=[DependencyVersionReference(id=record.id, key=record.key, version=record.version) for record in connector_definitions],
+            runtime_adapter_version=input_data.runtime.adapter_version or "unspecified",
+        )
         blueprint = AgentBlueprint(
             **_record_kwargs(metadata),
             key=input_data.key,
+            version=version,
+            release_state=input_data.release_state,
+            dependency_snapshot=dependency_snapshot,
             name=input_data.name,
             product_tier=input_data.product_tier,
             domain=input_data.domain,
@@ -327,58 +493,57 @@ class CipControlPlane:
             runtime=input_data.runtime,
             connector_definition_ids=input_data.connector_definition_ids,
             policy_pack_ids=input_data.policy_pack_ids,
+            guardrail_definition_ids=guardrail_definition_ids,
             handoff_targets=input_data.handoff_targets or [],
             structured_output=input_data.structured_output,
-            status=input_data.status,
+            supersedes_blueprint_id=input_data.supersedes_blueprint_id,
+            status=input_data.status or ("active" if input_data.release_state == "released" else "draft"),
         )
-        return self.repositories.agent_blueprints.save(blueprint)
+        self.repositories.agent_blueprints.save(blueprint)
+        self._record_audit_event(
+            tenant_id="shared",
+            category="deployment",
+            action="agent_blueprint.released",
+            actor=_system_actor(),
+            payload={"agent_blueprint_id": blueprint.id, "key": blueprint.key, "version": blueprint.version, "release_state": blueprint.release_state},
+        )
+        return blueprint
 
     def deploy_agent(self, input_data: DeployAgentInput) -> DeploymentRecord:
         self._ensure_tenant_exists(input_data.tenant_id)
         blueprint = self._ensure_agent_blueprint_exists(input_data.agent_blueprint_id)
-        connector_bindings = [
-            self._ensure_connector_binding_exists(binding_id)
-            for binding_id in input_data.connector_binding_ids
-        ]
-
+        connector_bindings = [self._ensure_connector_binding_exists(binding_id) for binding_id in input_data.connector_binding_ids]
         for connector_binding in connector_bindings:
             if connector_binding.tenant_id != input_data.tenant_id:
-                raise CipControlPlaneError(
-                    "deployments may only use connector bindings from the same tenant"
-                )
-
-        supplied_connector_definition_ids = {
-            binding.connector_definition_id for binding in connector_bindings
-        }
+                raise CipControlPlaneError("deployments may only use connector bindings from the same tenant")
+        supplied_connector_definition_ids = {binding.connector_definition_id for binding in connector_bindings}
         missing_connector_definitions = [
             connector_definition_id
             for connector_definition_id in blueprint.connector_definition_ids
             if connector_definition_id not in supplied_connector_definition_ids
         ]
         if missing_connector_definitions:
-            raise CipControlPlaneError(
-                f"missing required connector bindings for blueprint {blueprint.key}"
-            )
+            raise CipControlPlaneError(f"missing required connector bindings for blueprint {blueprint.key}")
 
         policy_pack_ids = input_data.policy_pack_ids or blueprint.policy_pack_ids
         policy_packs = [self._ensure_policy_pack_exists(policy_pack_id) for policy_pack_id in policy_pack_ids]
         for policy_pack in policy_packs:
             if policy_pack.ownership == "tenant" and policy_pack.tenant_id != input_data.tenant_id:
-                raise CipControlPlaneError(
-                    "tenant-owned policy packs must belong to the deployment tenant"
-                )
+                raise CipControlPlaneError("tenant-owned policy packs must belong to the deployment tenant")
 
         metadata = _build_record_metadata(input_data.record_id)
         deployment = DeploymentRecord(
             **_record_kwargs(metadata),
             tenant_id=input_data.tenant_id,
             agent_blueprint_id=input_data.agent_blueprint_id,
+            agent_blueprint_version=blueprint.version,
             environment=input_data.environment,
             connector_binding_ids=input_data.connector_binding_ids,
             policy_pack_ids=policy_pack_ids,
             status=input_data.status,
-            deployed_at=_utc_now(),
             tags=input_data.tags or [],
+            deployed_at=_utc_now(),
+            last_transition_at=_utc_now(),
         )
         self.repositories.deployments.save(deployment)
         self._record_audit_event(
@@ -386,25 +551,76 @@ class CipControlPlane:
             deployment_id=deployment.id,
             category="deployment",
             action="deployment.created",
-            actor=AuditActor(type="system", id="cip-control-plane"),
-            payload={
-                "agent_blueprint_id": deployment.agent_blueprint_id,
-                "environment": deployment.environment,
-            },
+            actor=_system_actor(),
+            payload={"agent_blueprint_id": deployment.agent_blueprint_id, "agent_blueprint_version": deployment.agent_blueprint_version, "environment": deployment.environment, "status": deployment.status},
         )
         return deployment
+
+    def transition_deployment(self, input_data: TransitionDeploymentInput) -> DeploymentRecord:
+        deployment = self._ensure_deployment_exists(input_data.deployment_id)
+        allowed = ALLOWED_DEPLOYMENT_TRANSITIONS[deployment.status]
+        if input_data.target_status not in allowed:
+            raise CipControlPlaneError(f"invalid deployment transition: {deployment.status} -> {input_data.target_status}")
+        metadata = _touch_record(deployment)
+        updated = DeploymentRecord(
+            **_record_kwargs(metadata),
+            tenant_id=deployment.tenant_id,
+            agent_blueprint_id=deployment.agent_blueprint_id,
+            agent_blueprint_version=deployment.agent_blueprint_version,
+            environment=deployment.environment,
+            connector_binding_ids=deployment.connector_binding_ids,
+            policy_pack_ids=deployment.policy_pack_ids,
+            status=input_data.target_status,
+            tags=deployment.tags,
+            deployed_at=deployment.deployed_at,
+            last_transition_at=_utc_now(),
+        )
+        self.repositories.deployments.save(updated)
+        self._record_audit_event(
+            tenant_id=updated.tenant_id,
+            deployment_id=updated.id,
+            category="deployment",
+            action="deployment.transitioned",
+            actor=input_data.actor or _system_actor(),
+            payload={"from": deployment.status, "to": input_data.target_status, "reason": input_data.reason},
+        )
+        return updated
+
+    def rollback_deployment_to_blueprint(self, input_data: RollbackDeploymentInput) -> DeploymentRecord:
+        deployment = self._ensure_deployment_exists(input_data.deployment_id)
+        blueprint = self._ensure_agent_blueprint_exists(input_data.target_blueprint_id)
+        metadata = _touch_record(deployment)
+        updated = DeploymentRecord(
+            **_record_kwargs(metadata),
+            tenant_id=deployment.tenant_id,
+            agent_blueprint_id=blueprint.id,
+            agent_blueprint_version=blueprint.version,
+            environment=deployment.environment,
+            connector_binding_ids=deployment.connector_binding_ids,
+            policy_pack_ids=deployment.policy_pack_ids,
+            status=deployment.status,
+            tags=deployment.tags,
+            deployed_at=deployment.deployed_at,
+            last_transition_at=_utc_now(),
+        )
+        self.repositories.deployments.save(updated)
+        self._record_audit_event(
+            tenant_id=updated.tenant_id,
+            deployment_id=updated.id,
+            category="deployment",
+            action="deployment.blueprint.rollback",
+            actor=input_data.actor or _system_actor(),
+            payload={"target_blueprint_id": blueprint.id, "target_blueprint_version": blueprint.version, "reason": input_data.reason},
+        )
+        return updated
 
     def start_run_session(self, input_data: StartRunSessionInput) -> RunSession:
         self._ensure_tenant_exists(input_data.tenant_id)
         deployment = self._ensure_deployment_exists(input_data.deployment_id)
         if deployment.tenant_id != input_data.tenant_id:
-            raise CipControlPlaneError(
-                "run sessions must reference a deployment from the same tenant"
-            )
+            raise CipControlPlaneError("run sessions must reference a deployment from the same tenant")
         if deployment.status != "active":
-            raise CipControlPlaneError(
-                "run sessions can only be started against active deployments"
-            )
+            raise CipControlPlaneError("run sessions can only be started against active deployments")
 
         metadata = _build_record_metadata(input_data.record_id)
         session = RunSession(
@@ -415,8 +631,18 @@ class CipControlPlane:
             status="running",
             started_at=_utc_now(),
             input_summary=input_data.input_summary,
+            trace_correlation=input_data.trace_correlation,
         )
         self.repositories.run_sessions.save(session)
+        self.append_run_event(
+            AppendRunEventInput(
+                session_id=session.id,
+                type="run_started",
+                actor=AuditActor(type="agent", id="cip-runtime"),
+                payload={"correlation_id": session.correlation_id, "input_summary": session.input_summary},
+                trace_correlation=session.trace_correlation,
+            )
+        )
         self._record_audit_event(
             tenant_id=input_data.tenant_id,
             deployment_id=deployment.id,
@@ -424,15 +650,14 @@ class CipControlPlane:
             category="session",
             action="session.started",
             actor=AuditActor(type="agent", id="cip-runtime"),
-            payload={
-                "deployment_id": deployment.id,
-                "correlation_id": session.correlation_id,
-            },
+            payload={"deployment_id": deployment.id, "correlation_id": session.correlation_id},
         )
         return session
 
     def complete_run_session(self, input_data: CompleteRunSessionInput) -> RunSession:
         session = self._ensure_run_session_exists(input_data.session_id)
+        if session.status in ("completed", "failed"):
+            raise CipControlPlaneError(f"session {session.id} is already terminal")
         metadata = _touch_record(session)
         updated_session = RunSession(
             **_record_kwargs(metadata),
@@ -444,8 +669,18 @@ class CipControlPlane:
             input_summary=session.input_summary,
             completed_at=_utc_now(),
             output_summary=input_data.output_summary,
+            trace_correlation=session.trace_correlation,
         )
         self.repositories.run_sessions.save(updated_session)
+        self.append_run_event(
+            AppendRunEventInput(
+                session_id=session.id,
+                type="run_completed" if input_data.status == "completed" else "run_failed",
+                actor=AuditActor(type="agent", id="cip-runtime"),
+                payload={"output_summary": input_data.output_summary},
+                trace_correlation=session.trace_correlation,
+            )
+        )
         self._record_audit_event(
             tenant_id=updated_session.tenant_id,
             deployment_id=updated_session.deployment_id,
@@ -455,7 +690,201 @@ class CipControlPlane:
             actor=AuditActor(type="agent", id="cip-runtime"),
             payload={"status": updated_session.status},
         )
+        self._persist_evidence_bundle(updated_session)
         return updated_session
+
+    def append_run_event(self, input_data: AppendRunEventInput) -> RunEvent:
+        session = self._ensure_run_session_exists(input_data.session_id)
+        prior_events = [
+            event for event in self.repositories.run_events.list() if event.session_id == session.id
+        ]
+        metadata = _build_record_metadata()
+        event = RunEvent(
+            **_record_kwargs(metadata),
+            tenant_id=session.tenant_id,
+            deployment_id=session.deployment_id,
+            session_id=session.id,
+            type=input_data.type,
+            sequence=len(prior_events) + 1,
+            occurred_at=_utc_now(),
+            actor=input_data.actor or AuditActor(type="agent", id="cip-runtime"),
+            payload=input_data.payload or {},
+            trace_correlation=input_data.trace_correlation,
+        )
+        self.repositories.run_events.append(event)
+        self._telemetry_sink.record(
+            MetricEvent(
+                name=f"run_event.{event.type}",
+                occurred_at=event.occurred_at,
+                attributes={"tenant_id": event.tenant_id, "deployment_id": event.deployment_id, "session_id": event.session_id, "sequence": event.sequence},
+            )
+        )
+        return event
+
+    def request_human_approval(
+        self,
+        input_data: RequestHumanApprovalInput,
+    ) -> ApprovalRequest:
+        session = self._ensure_run_session_exists(input_data.session_id)
+        if session.status != "running":
+            raise CipControlPlaneError("human approval can only be requested for running sessions")
+
+        metadata = _build_record_metadata()
+        approval_request = ApprovalRequest(
+            **_record_kwargs(metadata),
+            tenant_id=session.tenant_id,
+            deployment_id=session.deployment_id,
+            session_id=session.id,
+            checkpoint_id=input_data.checkpoint.checkpoint_id,
+            reason=input_data.checkpoint.reason,
+            requested_by=input_data.actor or AuditActor(type="agent", id="cip-runtime"),
+            status="pending",
+            expires_at=input_data.checkpoint.expires_at,
+            guardrail_definition_id=input_data.checkpoint.guardrail_definition_id,
+            policy_pack_id=input_data.checkpoint.policy_pack_id,
+        )
+        self.repositories.approval_requests.save(approval_request)
+
+        session_metadata = _touch_record(session)
+        updated_session = RunSession(
+            **_record_kwargs(session_metadata),
+            tenant_id=session.tenant_id,
+            deployment_id=session.deployment_id,
+            correlation_id=session.correlation_id,
+            status="waiting-human",
+            started_at=session.started_at,
+            input_summary=session.input_summary,
+            completed_at=session.completed_at,
+            output_summary=session.output_summary,
+            current_approval_request_id=approval_request.id,
+            trace_correlation=session.trace_correlation,
+        )
+        self.repositories.run_sessions.save(updated_session)
+        self.append_run_event(
+            AppendRunEventInput(
+                session_id=session.id,
+                type="approval_requested",
+                actor=approval_request.requested_by,
+                payload={"approval_request_id": approval_request.id, "checkpoint_id": approval_request.checkpoint_id, "reason": approval_request.reason},
+                trace_correlation=session.trace_correlation,
+            )
+        )
+        self._record_audit_event(
+            tenant_id=session.tenant_id,
+            deployment_id=session.deployment_id,
+            session_id=session.id,
+            category="approval",
+            action="approval.requested",
+            actor=approval_request.requested_by,
+            payload={"approval_request_id": approval_request.id, "checkpoint_id": approval_request.checkpoint_id},
+        )
+        return approval_request
+
+    def resolve_approval_request(
+        self,
+        input_data: ResolveApprovalRequestInput,
+    ) -> ApprovalRequest:
+        approval_request = self._ensure_approval_request_exists(input_data.approval_request_id)
+        if approval_request.status != "pending":
+            raise CipControlPlaneError(f"approval request {approval_request.id} is already {approval_request.status}")
+
+        metadata = _touch_record(approval_request)
+        resolved = ApprovalRequest(
+            **_record_kwargs(metadata),
+            tenant_id=approval_request.tenant_id,
+            deployment_id=approval_request.deployment_id,
+            session_id=approval_request.session_id,
+            checkpoint_id=approval_request.checkpoint_id,
+            reason=approval_request.reason,
+            requested_by=approval_request.requested_by,
+            status=input_data.decision,
+            expires_at=approval_request.expires_at,
+            resolved_at=_utc_now(),
+            resolution_comment=input_data.resolution_comment,
+            guardrail_definition_id=approval_request.guardrail_definition_id,
+            policy_pack_id=approval_request.policy_pack_id,
+        )
+        self.repositories.approval_requests.save(resolved)
+
+        session = self._ensure_run_session_exists(approval_request.session_id)
+        next_status: RunSessionStatus = "running" if input_data.decision == "approved" else "failed"
+        session_metadata = _touch_record(session)
+        updated_session = RunSession(
+            **_record_kwargs(session_metadata),
+            tenant_id=session.tenant_id,
+            deployment_id=session.deployment_id,
+            correlation_id=session.correlation_id,
+            status=next_status,
+            started_at=session.started_at,
+            input_summary=session.input_summary,
+            completed_at=_utc_now() if next_status == "failed" else session.completed_at,
+            output_summary=session.output_summary,
+            trace_correlation=session.trace_correlation,
+        )
+        self.repositories.run_sessions.save(updated_session)
+
+        actor = input_data.actor or AuditActor(type="human", id="operator")
+        self.append_run_event(
+            AppendRunEventInput(
+                session_id=session.id,
+                type="approval_resolved",
+                actor=actor,
+                payload={"approval_request_id": resolved.id, "decision": resolved.status, "resolution_comment": resolved.resolution_comment},
+                trace_correlation=session.trace_correlation,
+            )
+        )
+        if input_data.decision != "approved":
+            self.append_run_event(
+                AppendRunEventInput(
+                    session_id=session.id,
+                    type="run_failed",
+                    actor=actor,
+                    payload={"approval_request_id": resolved.id, "decision": resolved.status},
+                    trace_correlation=session.trace_correlation,
+                )
+            )
+            self._persist_evidence_bundle(updated_session)
+
+        self._record_audit_event(
+            tenant_id=updated_session.tenant_id,
+            deployment_id=updated_session.deployment_id,
+            session_id=updated_session.id,
+            category="approval",
+            action="approval.resolved",
+            actor=actor,
+            payload={"approval_request_id": resolved.id, "decision": resolved.status},
+        )
+        return resolved
+
+    def replay_run_session(self, session_id: str) -> ReplayedRunSession:
+        session = self._ensure_run_session_exists(session_id)
+        run_events = [event for event in self.repositories.run_events.list() if event.session_id == session_id]
+        approval_requests = [request for request in self.repositories.approval_requests.list() if request.session_id == session_id]
+        evidence_bundle = next(
+            (bundle for bundle in self.repositories.evidence_bundles.list() if bundle.session_id == session_id),
+            None,
+        )
+
+        reconstructed_status: RunSessionStatus = "queued"
+        for event in run_events:
+            if event.type == "run_started":
+                reconstructed_status = "running"
+            elif event.type == "approval_requested":
+                reconstructed_status = "waiting-human"
+            elif event.type == "approval_resolved":
+                reconstructed_status = "running" if event.payload.get("decision") == "approved" else "failed"
+            elif event.type == "run_completed":
+                reconstructed_status = "completed"
+            elif event.type == "run_failed":
+                reconstructed_status = "failed"
+
+        return ReplayedRunSession(
+            session=session,
+            run_events=run_events,
+            approval_requests=approval_requests,
+            evidence_bundle=evidence_bundle,
+            reconstructed_status=reconstructed_status,
+        )
 
     def _record_audit_event(
         self,
@@ -481,7 +910,15 @@ class CipControlPlane:
             actor=actor,
             payload=payload,
         )
-        return self.repositories.audit_events.append(event)
+        self.repositories.audit_events.append(event)
+        self._telemetry_sink.record(
+            MetricEvent(
+                name=f"audit_event.{event.action}",
+                occurred_at=event.occurred_at,
+                attributes={"tenant_id": event.tenant_id, "deployment_id": event.deployment_id, "session_id": event.session_id, "category": event.category},
+            )
+        )
+        return event
 
     def _ensure_tenant_exists(self, tenant_id: str) -> TenantRecord:
         tenant = self.repositories.tenants.get_by_id(tenant_id)
@@ -513,6 +950,12 @@ class CipControlPlane:
             raise CipControlPlaneError(f"unknown policy pack: {policy_pack_id}")
         return policy_pack
 
+    def _ensure_guardrail_definition_exists(self, guardrail_definition_id: str) -> GuardrailDefinition:
+        guardrail_definition = self.repositories.guardrail_definitions.get_by_id(guardrail_definition_id)
+        if guardrail_definition is None:
+            raise CipControlPlaneError(f"unknown guardrail definition: {guardrail_definition_id}")
+        return guardrail_definition
+
     def _ensure_agent_blueprint_exists(self, agent_blueprint_id: str) -> AgentBlueprint:
         agent_blueprint = self.repositories.agent_blueprints.get_by_id(agent_blueprint_id)
         if agent_blueprint is None:
@@ -530,3 +973,36 @@ class CipControlPlane:
         if session is None:
             raise CipControlPlaneError(f"unknown run session: {session_id}")
         return session
+
+    def _ensure_approval_request_exists(self, approval_request_id: str) -> ApprovalRequest:
+        approval_request = self.repositories.approval_requests.get_by_id(approval_request_id)
+        if approval_request is None:
+            raise CipControlPlaneError(f"unknown approval request: {approval_request_id}")
+        return approval_request
+
+    def _persist_evidence_bundle(self, session: RunSession) -> EvidenceBundle:
+        deployment = self._ensure_deployment_exists(session.deployment_id)
+        blueprint = self._ensure_agent_blueprint_exists(deployment.agent_blueprint_id)
+        run_events = [event for event in self.repositories.run_events.list() if event.session_id == session.id]
+        audit_events = [event for event in self.repositories.audit_events.list() if event.session_id == session.id]
+        existing = next(
+            (bundle for bundle in self.repositories.evidence_bundles.list() if bundle.session_id == session.id),
+            None,
+        )
+        metadata = _build_record_metadata() if existing is None else _touch_record(existing)
+        bundle = EvidenceBundle(
+            **_record_kwargs(metadata),
+            tenant_id=session.tenant_id,
+            deployment_id=session.deployment_id,
+            session_id=session.id,
+            agent_blueprint_id=blueprint.id,
+            agent_blueprint_version=blueprint.version,
+            policy_pack_versions=blueprint.dependency_snapshot.policy_packs,
+            guardrail_versions=blueprint.dependency_snapshot.guardrails,
+            summary=session.output_summary or f"Evidence bundle for {blueprint.key}@{blueprint.version}",
+            run_event_ids=[event.id for event in run_events],
+            audit_event_ids=[event.id for event in audit_events],
+            generated_at=_utc_now(),
+        )
+        self.repositories.evidence_bundles.save(bundle)
+        return bundle
