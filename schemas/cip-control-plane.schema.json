@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://new-odyssey.dev/schemas/cip-control-plane.schema.json",
+  "title": "CIP Control Plane Schema",
+  "type": "object",
+  "properties": {
+    "tenant": {
+      "$ref": "#/$defs/TenantRecord"
+    },
+    "deployment": {
+      "$ref": "#/$defs/DeploymentRecord"
+    },
+    "runSession": {
+      "$ref": "#/$defs/RunSession"
+    },
+    "auditEvent": {
+      "$ref": "#/$defs/AuditEvent"
+    }
+  },
+  "$defs": {
+    "BaseRecord": {
+      "type": "object",
+      "required": ["id", "createdAt", "updatedAt", "revision"],
+      "properties": {
+        "id": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "revision": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "TenantRecord": {
+      "allOf": [
+        { "$ref": "#/$defs/BaseRecord" },
+        {
+          "type": "object",
+          "required": [
+            "slug",
+            "displayName",
+            "productTier",
+            "platforms",
+            "regions",
+            "status"
+          ],
+          "properties": {
+            "slug": { "type": "string" },
+            "displayName": { "type": "string" },
+            "productTier": {
+              "enum": ["pegasus", "pantheon", "phoenix"]
+            },
+            "platforms": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "regions": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "status": {
+              "enum": ["active", "suspended", "retired"]
+            }
+          }
+        }
+      ]
+    },
+    "DeploymentRecord": {
+      "allOf": [
+        { "$ref": "#/$defs/BaseRecord" },
+        {
+          "type": "object",
+          "required": [
+            "tenantId",
+            "agentBlueprintId",
+            "environment",
+            "connectorBindingIds",
+            "policyPackIds",
+            "status",
+            "tags"
+          ],
+          "properties": {
+            "tenantId": { "type": "string" },
+            "agentBlueprintId": { "type": "string" },
+            "environment": {
+              "enum": ["development", "test", "sandbox", "production"]
+            },
+            "connectorBindingIds": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "policyPackIds": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "status": {
+              "enum": ["provisioning", "active", "paused", "failed", "retired"]
+            },
+            "deployedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "tags": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      ]
+    },
+    "RunSession": {
+      "allOf": [
+        { "$ref": "#/$defs/BaseRecord" },
+        {
+          "type": "object",
+          "required": [
+            "tenantId",
+            "deploymentId",
+            "correlationId",
+            "status",
+            "startedAt",
+            "inputSummary"
+          ],
+          "properties": {
+            "tenantId": { "type": "string" },
+            "deploymentId": { "type": "string" },
+            "correlationId": { "type": "string" },
+            "status": {
+              "enum": ["queued", "running", "waiting-human", "completed", "failed"]
+            },
+            "startedAt": { "type": "string", "format": "date-time" },
+            "completedAt": { "type": "string", "format": "date-time" },
+            "inputSummary": { "type": "string" },
+            "outputSummary": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "AuditEvent": {
+      "type": "object",
+      "required": [
+        "id",
+        "tenantId",
+        "category",
+        "action",
+        "severity",
+        "occurredAt",
+        "actor",
+        "payload"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "deploymentId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "category": {
+          "enum": ["tenant", "connector", "policy", "deployment", "session", "security"]
+        },
+        "action": { "type": "string" },
+        "severity": {
+          "enum": ["info", "warn", "error", "critical"]
+        },
+        "occurredAt": { "type": "string", "format": "date-time" },
+        "actor": {
+          "type": "object",
+          "required": ["type", "id"],
+          "properties": {
+            "type": { "enum": ["agent", "human", "system"] },
+            "id": { "type": "string" }
+          }
+        },
+        "payload": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

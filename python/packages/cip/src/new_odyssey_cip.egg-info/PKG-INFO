@@ -1,0 +1,19 @@
+Metadata-Version: 2.4
+Name: new-odyssey-cip
+Version: 0.1.0
+Summary: Common Infrastructure Protocol for enterprise AI agents.
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: openai-agents<1,>=0.12.4
+
+# new-odyssey-cip
+
+Python package for the Common Infrastructure Protocol monorepo.
+
+It provides:
+
+- control-plane record types
+- repository abstractions
+- in-memory repositories
+- a `CipControlPlane` service
+- an OpenAI Agents SDK adapter via `create_cip_control_plane_agent`

@@ -1,0 +1,32 @@
+{
+  "name": "@new-odyssey/cip",
+  "version": "0.1.0",
+  "description": "Common Infrastructure Protocol for enterprise AI agents.",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist/src"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "test": "npm run build --silent && node --test dist/test/*.test.js"
+  },
+  "dependencies": {
+    "@openai/agents": "^0.7.2",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}

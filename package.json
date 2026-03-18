@@ -1,0 +1,22 @@
+{
+  "name": "cip-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Polyglot monorepo for New Odyssey's Common Infrastructure Protocol.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "typescript/packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build:ts",
+    "build:ts": "npm run build --workspace @new-odyssey/cip",
+    "test": "npm run test:ts && npm run test:py",
+    "test:ts": "npm run test --workspace @new-odyssey/cip",
+    "test:py": "PYTHONPATH=python/packages/cip/src .venv/bin/python -m unittest discover -s python/packages/cip/tests -p 'test_*.py'",
+    "clean": "rm -rf node_modules package-lock.json typescript/packages/cip/dist"
+  },
+  "devDependencies": {}
+}
