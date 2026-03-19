@@ -4,6 +4,7 @@ export * from "./client/client.js";
 export * from "./client/run-tracker.js";
 export * from "./client/transports.js";
 export * from "./client/types.js";
+export * from "./connectors/backends.js";
 export * from "./connectors/dynamics365-stub.js";
 export * from "./connectors/quota.js";
 export * from "./connectors/types.js";

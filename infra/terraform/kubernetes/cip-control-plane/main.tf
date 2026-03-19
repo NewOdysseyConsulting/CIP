@@ -36,6 +36,17 @@ resource "helm_release" "this" {
         postgres = var.postgres_secret_name
         operator = var.operator_secret_name
       }
+      config = {
+        operatorAuthMode       = var.operator_auth_mode
+        operatorIssuer         = var.operator_issuer
+        operatorAudience       = var.operator_audience
+        operatorJwksUrl        = var.operator_jwks_url
+        workerPollIntervalMs   = var.worker_poll_interval_ms
+        workerMaxAttempts      = var.worker_max_attempts
+        retentionWindowHours   = var.retention_window_hours
+        retentionSweepEveryLoops = var.retention_sweep_every_loops
+        runMigrationsOnStartup = "false"
+      }
     })
   ]
 }

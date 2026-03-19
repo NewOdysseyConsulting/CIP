@@ -7,11 +7,19 @@ from dataclasses import asdict
 import httpx
 
 from new_odyssey_cip import (
+    CipAdminClient,
+    CipAuthError,
     CipClient,
     CipEventBatch,
+    CipRunTracker,
     CompleteRunSessionInput,
+    CreateApiKeyRequest,
+    HttpCipAdminTransport,
     HttpCipControlPlaneTransport,
     LocalCipControlPlaneTransport,
+    RegisterTenantInput,
+    RevokeApiKeyRequest,
+    RotateApiKeyRequest,
     StartRunSessionInput,
 )
 
@@ -91,6 +99,22 @@ class CipClientTransportTests(unittest.TestCase):
         )
         replay = control_plane.replay_run_session(session.id)
         evidence = control_plane.get_evidence_bundle(session.id)
+        ingest_job = {
+            "id": "job-1",
+            "tenant_id": tenant.id,
+            "session_id": session.id,
+            "job_type": "event_batch",
+            "payload": {
+                "tenant_id": tenant.id,
+                "session_id": session.id,
+                "events": [],
+            },
+            "status": "completed",
+            "attempt_count": 1,
+            "available_at": "2026-03-18T10:00:00+00:00",
+            "created_at": "2026-03-18T10:00:00+00:00",
+            "updated_at": "2026-03-18T10:00:00+00:00",
+        }
 
         def handler(request: httpx.Request) -> httpx.Response:
             path = request.url.path
@@ -126,6 +150,8 @@ class CipClientTransportTests(unittest.TestCase):
                     200,
                     json=_camelize(asdict(completed)),
                 )
+            if path == "/v1/ingest-jobs/job-1":
+                return httpx.Response(200, json=_camelize(ingest_job))
             if path == "/v1/deployments":
                 return httpx.Response(
                     200,
@@ -164,15 +190,127 @@ class CipClientTransportTests(unittest.TestCase):
         )
         remote_replay = client.get_replay(session.id)
         remote_evidence = client.get_evidence_bundle(session.id)
+        remote_job = client.get_ingest_job("job-1")
         remote_tenant = client.get_tenant(tenant.id)
         remote_deployments = client.list_deployments()
+        tracker = CipRunTracker(client, poll_interval_s=0.001, max_poll_attempts=1)
+        waited_job = tracker.wait_for_ingest("job-1")
 
         self.assertEqual(remote_session.id, session.id)
         self.assertEqual(remote_completed.status, "completed")
         self.assertEqual(remote_replay.reconstructed_status, "completed")
         self.assertEqual(remote_evidence.agent_blueprint_version, evidence.agent_blueprint_version)
+        self.assertEqual(remote_job.id, "job-1")
         self.assertEqual(remote_tenant.id, tenant.id)
         self.assertEqual(remote_deployments[0].id, deployment.id)
+        self.assertEqual(waited_job.status, "completed")
+
+    def test_http_admin_transport_maps_bootstrap_contracts(self) -> None:
+        fixture = create_workday_security_fixture()
+        tenant = fixture["tenant"]
+        deployment = fixture["deployment"]
+
+        api_key_record = {
+            "id": "api-key-1",
+            "tenant_id": tenant.id,
+            "name": "bootstrap key",
+            "key_hash": "hash",
+            "scopes": ["sessions:write"],
+            "status": "active",
+            "created_at": "2026-03-18T10:00:00+00:00",
+            "updated_at": "2026-03-18T10:00:00+00:00",
+            "description": "bootstrap",
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            path = request.url.path
+            if path == "/v1/admin/tenants" and request.method == "POST":
+                return httpx.Response(200, json=_camelize(asdict(tenant)))
+            if path == "/v1/admin/deployments":
+                return httpx.Response(200, json=[_camelize(asdict(deployment))])
+            if path == "/v1/admin/api-keys" and request.method == "POST":
+                return httpx.Response(
+                    200,
+                    json=_camelize(
+                        {
+                            "record": api_key_record,
+                            "plain_text_key": "cip_test_secret",
+                        }
+                    ),
+                )
+            if path == "/v1/admin/api-keys/api-key-1:rotate":
+                return httpx.Response(
+                    200,
+                    json=_camelize(
+                        {
+                            "record": {**api_key_record, "name": "rotated key"},
+                            "plain_text_key": "cip_rotated_secret",
+                        }
+                    ),
+                )
+            if path == "/v1/admin/api-keys/api-key-1:revoke":
+                return httpx.Response(
+                    200,
+                    json=_camelize({**api_key_record, "status": "revoked"}),
+                )
+            raise AssertionError(f"unexpected path {path}")
+
+        client = CipAdminClient(
+            HttpCipAdminTransport(
+                "https://cip.test",
+                operator_token="operator-token",
+                client=httpx.Client(
+                    base_url="https://cip.test",
+                    transport=httpx.MockTransport(handler),
+                ),
+            )
+        )
+
+        created_tenant = client.create_tenant(
+            RegisterTenantInput(
+                slug="bootstrap-tenant",
+                display_name="Bootstrap Tenant",
+                product_tier="pantheon",
+                platforms=["workday"],
+                regions=["eu-west-2"],
+            )
+        )
+        deployments = client.list_deployments()
+        issued = client.issue_api_key(
+            CreateApiKeyRequest(
+                tenant_id=tenant.id,
+                name="bootstrap key",
+                scopes=["sessions:write"],
+            )
+        )
+        rotated = client.rotate_api_key(RotateApiKeyRequest(api_key_id="api-key-1", name="rotated key"))
+        revoked = client.revoke_api_key(RevokeApiKeyRequest(api_key_id="api-key-1"))
+
+        self.assertEqual(created_tenant.id, tenant.id)
+        self.assertEqual(deployments[0].id, deployment.id)
+        self.assertEqual(issued.record.id, "api-key-1")
+        self.assertEqual(issued.plain_text_key, "cip_test_secret")
+        self.assertEqual(rotated.record.name, "rotated key")
+        self.assertEqual(revoked.status, "revoked")
+
+    def test_http_transport_raises_typed_auth_errors(self) -> None:
+        transport = HttpCipControlPlaneTransport(
+            "https://cip.test",
+            api_key="sdk-token",
+            client=httpx.Client(
+                base_url="https://cip.test",
+                transport=httpx.MockTransport(lambda _request: httpx.Response(401, json={"error": "unauthorized"})),
+            ),
+        )
+
+        with self.assertRaises(CipAuthError):
+            transport.create_session(
+                StartRunSessionInput(
+                    tenant_id="tenant-1",
+                    deployment_id="deployment-1",
+                    input_summary="unauthorized",
+                )
+            )
 
 
 def _camelize_name(value: str) -> str:

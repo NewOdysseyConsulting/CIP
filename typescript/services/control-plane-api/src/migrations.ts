@@ -9,8 +9,18 @@ create table if not exists api_keys (
   key_hash text not null unique,
   scopes jsonb not null,
   status text not null,
+  expires_at timestamptz,
+  revoked_at timestamptz,
+  last_used_at timestamptz,
+  rotated_from_api_key_id text,
+  description text,
   created_at timestamptz not null,
   updated_at timestamptz not null
+);
+
+create table if not exists schema_migrations (
+  version text primary key,
+  applied_at timestamptz not null default now()
 );
 
 create table if not exists ingest_jobs (
@@ -69,6 +79,16 @@ alter table if exists idempotency_records
   alter column response_status drop not null;
 alter table if exists idempotency_records
   alter column response_body drop not null;
+alter table if exists api_keys
+  add column if not exists expires_at timestamptz;
+alter table if exists api_keys
+  add column if not exists revoked_at timestamptz;
+alter table if exists api_keys
+  add column if not exists last_used_at timestamptz;
+alter table if exists api_keys
+  add column if not exists rotated_from_api_key_id text;
+alter table if exists api_keys
+  add column if not exists description text;
 
 create index if not exists ingest_jobs_available_idx
   on ingest_jobs (status, available_at, created_at);

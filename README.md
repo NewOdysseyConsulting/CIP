@@ -332,6 +332,13 @@ External contributions are welcome, but this is infrastructure code with audit a
 
 If you discover a security issue, report it privately to the maintainers rather than opening a public exploit issue.
 
+Repository policies and release notes:
+
+- [CONTRIBUTING.md](/Users/ademolaafolabi/Documents/GitHub/CIP/CONTRIBUTING.md)
+- [SECURITY.md](/Users/ademolaafolabi/Documents/GitHub/CIP/SECURITY.md)
+- [CHANGELOG.md](/Users/ademolaafolabi/Documents/GitHub/CIP/CHANGELOG.md)
+- [docs/compatibility.md](/Users/ademolaafolabi/Documents/GitHub/CIP/docs/compatibility.md)
+
 ## Open-Source Boundary
 
 Included here:

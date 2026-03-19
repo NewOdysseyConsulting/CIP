@@ -8,15 +8,20 @@ import { createPostgresControlPlaneServiceStore } from "./store.js";
 const databaseUrl = process.env.CIP_DATABASE_URL;
 const host = process.env.HOST ?? "0.0.0.0";
 const port = Number.parseInt(process.env.PORT ?? "8080", 10);
-const sharedSecret = process.env.CIP_OPERATOR_SHARED_SECRET;
 const issuer = process.env.CIP_OPERATOR_ISSUER ?? "cip-control-plane";
 const audience = process.env.CIP_OPERATOR_AUDIENCE ?? "cip-operators";
+const authMode = process.env.CIP_OPERATOR_AUTH_MODE ?? "hs256";
+const sharedSecret = process.env.CIP_OPERATOR_SHARED_SECRET;
+const jwksUrl = process.env.CIP_OPERATOR_JWKS_URL;
 const runMigrationsOnStartup =
   process.env.CIP_RUN_MIGRATIONS_ON_STARTUP === "true";
 
-if (databaseUrl === undefined || sharedSecret === undefined) {
+if (
+  databaseUrl === undefined ||
+  (authMode === "jwks-rs256" ? jwksUrl === undefined : sharedSecret === undefined)
+) {
   throw new Error(
-    "CIP_DATABASE_URL and CIP_OPERATOR_SHARED_SECRET must be configured",
+    "CIP_DATABASE_URL and the configured operator auth settings must be provided",
   );
 }
 
@@ -32,10 +37,27 @@ const app = createControlPlaneApiApp({
   controlPlane,
   repositories,
   serviceStore,
-  operatorAuth: {
-    sharedSecret,
-    issuer,
-    audience,
+  operatorAuth:
+    authMode === "jwks-rs256"
+      ? {
+          mode: "jwks-rs256",
+          jwksUrl: jwksUrl!,
+          issuer,
+          audience,
+        }
+      : {
+          mode: "hs256",
+          sharedSecret: sharedSecret!,
+          issuer,
+          audience,
+        },
+  readyCheck: async () => {
+    try {
+      await pool.query("select 1");
+      return true;
+    } catch {
+      return false;
+    }
   },
 });
 

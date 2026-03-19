@@ -22,6 +22,11 @@ export interface ApiKeyRecord extends ServiceRecord {
   keyHash: string;
   scopes: ApiKeyScope[];
   status: "active" | "revoked";
+  expiresAt?: string;
+  revokedAt?: string;
+  lastUsedAt?: string;
+  rotatedFromApiKeyId?: string;
+  description?: string;
 }
 
 export interface CreateApiKeyInput {
@@ -29,6 +34,22 @@ export interface CreateApiKeyInput {
   tenantId: string;
   name: string;
   scopes: ApiKeyScope[];
+  expiresAt?: string;
+  rotatedFromApiKeyId?: string;
+  description?: string;
+}
+
+export interface RotateApiKeyInput {
+  apiKeyId: string;
+  name?: string;
+  scopes?: ApiKeyScope[];
+  expiresAt?: string;
+  description?: string;
+}
+
+export interface RevokeApiKeyInput {
+  apiKeyId: string;
+  reason?: string;
 }
 
 export interface IssuedApiKey {
@@ -102,6 +123,7 @@ export interface IngestJobReceipt {
 
 export interface ApiKeyStore {
   save(record: ApiKeyRecord): Promise<ApiKeyRecord>;
+  getById(id: string): Promise<ApiKeyRecord | null>;
   getByHash(keyHash: string): Promise<ApiKeyRecord | null>;
   list(tenantId?: string): Promise<ApiKeyRecord[]>;
 }
@@ -115,6 +137,7 @@ export interface IdempotencyStore {
     response: StoredHttpResponse,
   ): Promise<IdempotencyRecord>;
   abandon(routeKey: string, idempotencyKey: string): Promise<void>;
+  deleteOlderThan(cutoff: string): Promise<number>;
 }
 
 export interface IngestJobStore {
@@ -129,11 +152,15 @@ export interface IngestJobStore {
     availableAt: string,
   ): Promise<IngestJobRecord | null>;
   moveToDeadLetter(id: string, error: string): Promise<DeadLetterJobRecord | null>;
+  deleteOlderThan(cutoff: string): Promise<number>;
 }
 
 export interface DeadLetterJobStore {
   save(record: DeadLetterJobRecord): Promise<DeadLetterJobRecord>;
+  getById(id: string): Promise<DeadLetterJobRecord | null>;
   list(): Promise<DeadLetterJobRecord[]>;
+  delete(id: string): Promise<void>;
+  deleteOlderThan(cutoff: string): Promise<number>;
 }
 
 export interface ControlPlaneServiceStore {
@@ -141,6 +168,12 @@ export interface ControlPlaneServiceStore {
   idempotency: IdempotencyStore;
   ingestJobs: IngestJobStore;
   deadLetterJobs: DeadLetterJobStore;
+}
+
+export interface RetentionCleanupResult {
+  idempotencyDeleted: number;
+  ingestDeleted: number;
+  deadLetterDeleted: number;
 }
 
 export interface WorkerProcessResult {

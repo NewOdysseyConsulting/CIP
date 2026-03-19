@@ -17,10 +17,14 @@ const defaultActor: AuditActor = {
 
 export interface CipRunTrackerOptions {
   actor?: AuditActor;
+  pollIntervalMs?: number;
+  maxPollAttempts?: number;
 }
 
 export class CipRunTracker {
   private readonly actor: AuditActor;
+  private readonly pollIntervalMs: number;
+  private readonly maxPollAttempts: number;
 
   constructor(
     private readonly client: Pick<
@@ -30,12 +34,15 @@ export class CipRunTracker {
       | "requestApproval"
       | "resolveApproval"
       | "completeSession"
+      | "getIngestJob"
       | "getReplay"
       | "getEvidenceBundle"
     >,
     options: CipRunTrackerOptions = {},
   ) {
     this.actor = options.actor ?? defaultActor;
+    this.pollIntervalMs = options.pollIntervalMs ?? 200;
+    this.maxPollAttempts = options.maxPollAttempts ?? 20;
   }
 
   async createSession(input: CreateSessionRequest, idempotencyKey?: string) {
@@ -130,5 +137,107 @@ export class CipRunTracker {
 
   async getEvidenceBundle(sessionId: string) {
     return this.client.getEvidenceBundle(sessionId);
+  }
+
+  async waitForIngest(jobId: string) {
+    for (let attempt = 0; attempt < this.maxPollAttempts; attempt += 1) {
+      const job = await this.client.getIngestJob(jobId);
+      if (
+        job === null ||
+        job.status === "completed" ||
+        job.status === "failed" ||
+        job.status === "dead_letter"
+      ) {
+        return job;
+      }
+      await new Promise((resolve) => setTimeout(resolve, this.pollIntervalMs));
+    }
+    return this.client.getIngestJob(jobId);
+  }
+
+  async waitForReplayStatus(
+    sessionId: string,
+    status: "completed" | "failed" | "waiting-human",
+  ) {
+    for (let attempt = 0; attempt < this.maxPollAttempts; attempt += 1) {
+      const replay = await this.client.getReplay(sessionId);
+      if (replay.reconstructedStatus === status) {
+        return replay;
+      }
+      await new Promise((resolve) => setTimeout(resolve, this.pollIntervalMs));
+    }
+    return this.client.getReplay(sessionId);
+  }
+
+  runStarted(payload: Record<string, unknown> = {}, occurredAt?: string) {
+    return {
+      type: "run_started" as const,
+      actor: this.actor,
+      payload,
+      ...(occurredAt === undefined ? {} : { occurredAt }),
+    };
+  }
+
+  toolCalled(payload: Record<string, unknown>, occurredAt?: string) {
+    return {
+      type: "tool_called" as const,
+      actor: this.actor,
+      payload,
+      ...(occurredAt === undefined ? {} : { occurredAt }),
+    };
+  }
+
+  toolCompleted(payload: Record<string, unknown>, occurredAt?: string) {
+    return {
+      type: "tool_completed" as const,
+      actor: this.actor,
+      payload,
+      ...(occurredAt === undefined ? {} : { occurredAt }),
+    };
+  }
+
+  guardrailTriggered(payload: Record<string, unknown>, occurredAt?: string) {
+    return {
+      type: "guardrail_triggered" as const,
+      actor: this.actor,
+      payload,
+      ...(occurredAt === undefined ? {} : { occurredAt }),
+    };
+  }
+
+  policyDecided(payload: Record<string, unknown>, occurredAt?: string) {
+    return {
+      type: "policy_decided" as const,
+      actor: this.actor,
+      payload,
+      ...(occurredAt === undefined ? {} : { occurredAt }),
+    };
+  }
+
+  approvalRequested(payload: Record<string, unknown>, occurredAt?: string) {
+    return {
+      type: "approval_requested" as const,
+      actor: this.actor,
+      payload,
+      ...(occurredAt === undefined ? {} : { occurredAt }),
+    };
+  }
+
+  runCompleted(payload: Record<string, unknown> = {}, occurredAt?: string) {
+    return {
+      type: "run_completed" as const,
+      actor: this.actor,
+      payload,
+      ...(occurredAt === undefined ? {} : { occurredAt }),
+    };
+  }
+
+  runFailed(payload: Record<string, unknown> = {}, occurredAt?: string) {
+    return {
+      type: "run_failed" as const,
+      actor: this.actor,
+      payload,
+      ...(occurredAt === undefined ? {} : { occurredAt }),
+    };
   }
 }

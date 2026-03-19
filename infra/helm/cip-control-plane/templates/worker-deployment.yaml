@@ -25,3 +25,5 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ .Release.Name }}-config
+          resources:
+            {{- toYaml .Values.resources.worker | nindent 12 }}

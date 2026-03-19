@@ -3,7 +3,12 @@ kind: ConfigMap
 metadata:
   name: {{ .Release.Name }}-config
 data:
+  CIP_OPERATOR_AUTH_MODE: {{ .Values.config.operatorAuthMode | quote }}
   CIP_OPERATOR_ISSUER: {{ .Values.config.operatorIssuer | quote }}
   CIP_OPERATOR_AUDIENCE: {{ .Values.config.operatorAudience | quote }}
+  CIP_OPERATOR_JWKS_URL: {{ .Values.config.operatorJwksUrl | quote }}
   CIP_WORKER_POLL_INTERVAL_MS: {{ .Values.config.workerPollIntervalMs | quote }}
   CIP_WORKER_MAX_ATTEMPTS: {{ .Values.config.workerMaxAttempts | quote }}
+  CIP_RETENTION_WINDOW_HOURS: {{ .Values.config.retentionWindowHours | quote }}
+  CIP_RETENTION_SWEEP_EVERY_LOOPS: {{ .Values.config.retentionSweepEveryLoops | quote }}
+  CIP_RUN_MIGRATIONS_ON_STARTUP: {{ .Values.config.runMigrationsOnStartup | quote }}

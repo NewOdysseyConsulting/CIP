@@ -4,12 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "new-odyssey-cip"
-version = "0.1.0"
+version = "0.2.0a0"
 description = "Common Infrastructure Protocol for enterprise AI agents."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "openai-agents>=0.12.4,<1",
+  "boto3>=1.37,<2",
   "httpx>=0.28,<1",
   "psycopg>=3.2,<4"
 ]

@@ -19,3 +19,5 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.existingSecrets.postgres }}
                   key: database-url
+          resources:
+            {{- toYaml .Values.resources.migrate | nindent 12 }}

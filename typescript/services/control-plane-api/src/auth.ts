@@ -1,15 +1,30 @@
 import { TextEncoder } from "node:util";
 
-import { jwtVerify, SignJWT } from "jose";
+import { createRemoteJWKSet, jwtVerify, SignJWT } from "jose";
 
-import { hashApiKey } from "./store.js";
+import { hashApiKey, touchApiKeyLastUsed } from "./store.js";
 import type { ApiKeyRecord, ApiKeyScope, ControlPlaneServiceStore } from "./types.js";
 
-export interface OperatorAuthConfig {
-  sharedSecret: string;
-  issuer: string;
-  audience: string;
-}
+export type OperatorScope =
+  | "control-plane:admin"
+  | "tenants:read"
+  | "tenants:write"
+  | "connectors:read"
+  | "connectors:write"
+  | "credentials:read"
+  | "credentials:write"
+  | "policies:read"
+  | "policies:write"
+  | "blueprints:read"
+  | "blueprints:write"
+  | "deployments:read"
+  | "deployments:write"
+  | "api-keys:read"
+  | "api-keys:write"
+  | "ingest:read"
+  | "ingest:write"
+  | "audit:read"
+  | "approvals:resolve";
 
 export interface OperatorClaims {
   sub: string;
@@ -17,13 +32,22 @@ export interface OperatorClaims {
   tenantId?: string;
 }
 
-export type OperatorScope =
-  | "control-plane:admin"
-  | "approvals:resolve"
-  | "deployments:read"
-  | "deployments:write"
-  | "tenants:read"
-  | "audit:read";
+export type OperatorAuthConfig =
+  | {
+      mode?: "hs256";
+      sharedSecret: string;
+      issuer: string;
+      audience: string;
+    }
+  | {
+      mode: "jwks-rs256";
+      jwksUrl: string;
+      issuer: string;
+      audience: string;
+    };
+
+const encoder = new TextEncoder();
+const jwksCache = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 
 const parseScopes = (scope: string): Set<string> =>
   new Set(
@@ -32,8 +56,6 @@ const parseScopes = (scope: string): Set<string> =>
       .map((value) => value.trim())
       .filter(Boolean),
   );
-
-const encoder = new TextEncoder();
 
 export const extractBearerToken = (
   authorizationHeader: string | undefined,
@@ -64,12 +86,26 @@ export const authenticateSdkApiKey = async (
   if (record === null || record.status !== "active") {
     return null;
   }
+  if (record.expiresAt !== undefined && record.expiresAt <= new Date().toISOString()) {
+    return null;
+  }
 
   if (!record.scopes.includes(requiredScope)) {
     throw new Error(`api key is missing required scope ${requiredScope}`);
   }
 
+  await touchApiKeyLastUsed(store, record);
   return record;
+};
+
+const getJwks = (jwksUrl: string) => {
+  const cached = jwksCache.get(jwksUrl);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const jwks = createRemoteJWKSet(new URL(jwksUrl));
+  jwksCache.set(jwksUrl, jwks);
+  return jwks;
 };
 
 export const verifyOperatorToken = async (
@@ -81,10 +117,19 @@ export const verifyOperatorToken = async (
     return null;
   }
 
-  const verified = await jwtVerify(token, encoder.encode(config.sharedSecret), {
-    issuer: config.issuer,
-    audience: config.audience,
-  });
+  const verified =
+    config.mode === "jwks-rs256"
+      ? await jwtVerify(token, getJwks(config.jwksUrl), {
+          issuer: config.issuer,
+          audience: config.audience,
+          algorithms: ["RS256"],
+        })
+      : await jwtVerify(token, encoder.encode(config.sharedSecret), {
+          issuer: config.issuer,
+          audience: config.audience,
+          algorithms: ["HS256"],
+        });
+
   const scope = verified.payload.scope;
   const sub = verified.payload.sub;
 
@@ -110,10 +155,7 @@ export const requireOperatorScope = (
   tenantId?: string,
 ): void => {
   const scopes = parseScopes(claims.scope);
-  if (
-    !scopes.has("control-plane:admin") &&
-    !scopes.has(requiredScope)
-  ) {
+  if (!scopes.has("control-plane:admin") && !scopes.has(requiredScope)) {
     throw new Error(`operator token is missing required scope ${requiredScope}`);
   }
 
@@ -124,7 +166,7 @@ export const requireOperatorScope = (
 
 export const signOperatorToken = async (
   claims: OperatorClaims,
-  config: OperatorAuthConfig,
+  config: Extract<OperatorAuthConfig, { mode?: "hs256" }>,
 ): Promise<string> =>
   new SignJWT({
     scope: claims.scope,

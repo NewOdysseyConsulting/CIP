@@ -1,0 +1,65 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "codex/**"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: azure/setup-helm@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Install monorepo dependencies
+        run: npm ci
+
+      - name: Install Python package
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip
+          python -m pip install -e python/packages/cip
+
+      - name: Build packages and services
+        run: npm run build
+
+      - name: Run test suites
+        run: npm test
+
+      - name: Package SDK dry run
+        run: npm pack --workspace @new-odyssey/cip --dry-run
+
+      - name: Render Helm chart
+        run: helm template cip-control-plane infra/helm/cip-control-plane >/dev/null
+
+      - name: Validate Terraform module
+        working-directory: infra/terraform/kubernetes/cip-control-plane
+        run: |
+          terraform init -backend=false
+          terraform validate
+
+      - name: Build control-plane images
+        run: |
+          docker build -f typescript/services/control-plane-api/Dockerfile .
+          docker build -f typescript/services/control-plane-worker/Dockerfile .
+          docker build -f typescript/services/control-plane-migrate/Dockerfile .

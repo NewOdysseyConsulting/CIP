@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "CIP Control Plane API",
-    "version": "0.1.0",
-    "description": "REST API contract for the deployable CIP control plane."
+    "version": "0.2.0-alpha.0",
+    "description": "REST API contract for the deployable CIP control plane. This prerelease schema documents the runtime, admin, and operational API surface."
   },
   "paths": {
     "/healthz": {

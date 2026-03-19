@@ -104,6 +104,8 @@ class ConnectorDefinition(BaseRecord):
     source: Literal["first-party", "partner", "community"]
     capabilities: list[str]
     status: Literal["draft", "active", "deprecated"]
+    driver_key: str | None = None
+    driver_config: dict[str, Any] | None = None
     metadata: dict[str, Any] | None = None
 
 
@@ -115,6 +117,7 @@ class CredentialBinding(BaseRecord):
     secret_ref: str
     scopes: list[str]
     status: Literal["active", "rotated", "revoked"]
+    secret_backend_key: str | None = None
     expires_at: IsoTimestamp | None = None
     rotated_at: IsoTimestamp | None = None
 

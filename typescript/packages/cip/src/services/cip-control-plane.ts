@@ -114,6 +114,8 @@ export interface RegisterConnectorDefinitionInput {
   version?: string;
   platform: string;
   displayName: string;
+  driverKey?: string;
+  driverConfig?: Record<string, unknown>;
   runtime: ConnectorDefinition["runtime"];
   authStrategy: ConnectorDefinition["authStrategy"];
   source: ConnectorDefinition["source"];
@@ -127,6 +129,7 @@ export interface CreateCredentialBindingInput {
   tenantId: string;
   name: string;
   provider: string;
+  secretBackendKey?: string;
   secretRef: string;
   scopes: string[];
   expiresAt?: string;
@@ -322,6 +325,10 @@ export class CipControlPlane {
       version: input.version ?? incrementPatchVersion(latestVersion),
       platform: input.platform,
       displayName: input.displayName,
+      ...(input.driverKey === undefined ? {} : { driverKey: input.driverKey }),
+      ...(input.driverConfig === undefined
+        ? {}
+        : { driverConfig: input.driverConfig }),
       runtime: input.runtime,
       authStrategy: input.authStrategy,
       source: input.source,
@@ -343,6 +350,9 @@ export class CipControlPlane {
       tenantId: input.tenantId,
       name: input.name,
       provider: input.provider,
+      ...(input.secretBackendKey === undefined
+        ? {}
+        : { secretBackendKey: input.secretBackendKey }),
       secretRef: input.secretRef,
       scopes: input.scopes,
       ...(input.expiresAt === undefined ? {} : { expiresAt: input.expiresAt }),

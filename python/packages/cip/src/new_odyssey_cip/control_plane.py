@@ -129,6 +129,8 @@ class RegisterConnectorDefinitionInput:
     capabilities: list[str]
     record_id: str | None = None
     version: str | None = None
+    driver_key: str | None = None
+    driver_config: dict[str, Any] | None = None
     metadata: dict[str, Any] | None = None
     status: str = "active"
 
@@ -141,6 +143,7 @@ class CreateCredentialBindingInput:
     secret_ref: str
     scopes: list[str]
     record_id: str | None = None
+    secret_backend_key: str | None = None
     expires_at: str | None = None
     status: str = "active"
 
@@ -338,6 +341,8 @@ class CipControlPlane:
             version=input_data.version or _increment_patch_version(max(existing_versions) if existing_versions else None),
             platform=input_data.platform,
             display_name=input_data.display_name,
+            driver_key=input_data.driver_key,
+            driver_config=input_data.driver_config,
             runtime=input_data.runtime,
             auth_strategy=input_data.auth_strategy,
             source=input_data.source,
@@ -358,6 +363,7 @@ class CipControlPlane:
             tenant_id=input_data.tenant_id,
             name=input_data.name,
             provider=input_data.provider,
+            secret_backend_key=input_data.secret_backend_key,
             secret_ref=input_data.secret_ref,
             scopes=input_data.scopes,
             status=input_data.status,

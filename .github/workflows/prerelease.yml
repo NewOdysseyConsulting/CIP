@@ -1,0 +1,65 @@
+name: prerelease
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish prerelease artifacts to npm and PyPI"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  prerelease:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          python -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip build twine
+          python -m pip install -e python/packages/cip
+
+      - name: Build and test
+        run: |
+          npm run build
+          npm test
+
+      - name: npm dry run
+        run: npm pack --workspace @new-odyssey/cip --dry-run
+
+      - name: Build Python prerelease artifact
+        run: |
+          . .venv/bin/activate
+          python -m build python/packages/cip --outdir dist/python
+
+      - name: Publish npm prerelease
+        if: ${{ inputs.publish }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --workspace @new-odyssey/cip --tag alpha --access public
+
+      - name: Publish PyPI prerelease
+        if: ${{ inputs.publish }}
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          . .venv/bin/activate
+          python -m twine upload dist/python/*

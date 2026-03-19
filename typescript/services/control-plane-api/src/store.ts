@@ -13,6 +13,9 @@ import type {
   IngestJobRecord,
   IngestJobStatus,
   IssuedApiKey,
+  RevokeApiKeyInput,
+  RetentionCleanupResult,
+  RotateApiKeyInput,
   ReserveIdempotencyInput,
   StoredHttpResponse,
 } from "./types.js";
@@ -58,6 +61,11 @@ export const issueApiKey = async (
     keyHash: hashApiKey(plainTextKey),
     scopes: input.scopes,
     status: "active",
+    ...(input.expiresAt === undefined ? {} : { expiresAt: input.expiresAt }),
+    ...(input.rotatedFromApiKeyId === undefined
+      ? {}
+      : { rotatedFromApiKeyId: input.rotatedFromApiKeyId }),
+    ...(input.description === undefined ? {} : { description: input.description }),
   };
 
   await store.apiKeys.save(record);
@@ -75,6 +83,11 @@ class InMemoryApiKeyStore {
     const persisted = clone(record);
     this.records.set(record.id, persisted);
     return clone(persisted);
+  }
+
+  async getById(id: string): Promise<ApiKeyRecord | null> {
+    const record = this.records.get(id);
+    return record === undefined ? null : clone(record);
   }
 
   async getByHash(keyHash: string): Promise<ApiKeyRecord | null> {
@@ -157,6 +170,17 @@ class InMemoryIdempotencyStore {
   async abandon(routeKey: string, idempotencyKey: string): Promise<void> {
     this.records.delete(this.buildKey(routeKey, idempotencyKey));
   }
+
+  async deleteOlderThan(cutoff: string): Promise<number> {
+    let deleted = 0;
+    for (const [key, record] of this.records.entries()) {
+      if (record.updatedAt < cutoff) {
+        this.records.delete(key);
+        deleted += 1;
+      }
+    }
+    return deleted;
+  }
 }
 
 class InMemoryDeadLetterJobStore {
@@ -170,6 +194,26 @@ class InMemoryDeadLetterJobStore {
 
   async list(): Promise<DeadLetterJobRecord[]> {
     return Array.from(this.records.values()).map((record) => clone(record));
+  }
+
+  async getById(id: string): Promise<DeadLetterJobRecord | null> {
+    const record = this.records.get(id);
+    return record === undefined ? null : clone(record);
+  }
+
+  async delete(id: string): Promise<void> {
+    this.records.delete(id);
+  }
+
+  async deleteOlderThan(cutoff: string): Promise<number> {
+    let deleted = 0;
+    for (const [id, record] of this.records.entries()) {
+      if (record.createdAt < cutoff) {
+        this.records.delete(id);
+        deleted += 1;
+      }
+    }
+    return deleted;
   }
 }
 
@@ -289,6 +333,17 @@ class InMemoryIngestJobStore {
     );
     return clone(deadLetter);
   }
+
+  async deleteOlderThan(cutoff: string): Promise<number> {
+    let deleted = 0;
+    for (const [id, record] of this.records.entries()) {
+      if (record.updatedAt < cutoff) {
+        this.records.delete(id);
+        deleted += 1;
+      }
+    }
+    return deleted;
+  }
 }
 
 export const createInMemoryControlPlaneServiceStore =
@@ -311,6 +366,21 @@ const asApiKeyRecord = (row: Record<string, unknown>): ApiKeyRecord => ({
   status: String(row.status) as ApiKeyRecord["status"],
   createdAt: new Date(String(row.created_at)).toISOString(),
   updatedAt: new Date(String(row.updated_at)).toISOString(),
+  ...(row.expires_at === null || row.expires_at === undefined
+    ? {}
+    : { expiresAt: new Date(String(row.expires_at)).toISOString() }),
+  ...(row.revoked_at === null || row.revoked_at === undefined
+    ? {}
+    : { revokedAt: new Date(String(row.revoked_at)).toISOString() }),
+  ...(row.last_used_at === null || row.last_used_at === undefined
+    ? {}
+    : { lastUsedAt: new Date(String(row.last_used_at)).toISOString() }),
+  ...(row.rotated_from_api_key_id === null || row.rotated_from_api_key_id === undefined
+    ? {}
+    : { rotatedFromApiKeyId: String(row.rotated_from_api_key_id) }),
+  ...(row.description === null || row.description === undefined
+    ? {}
+    : { description: String(row.description) }),
 });
 
 const asIngestJobRecord = (row: Record<string, unknown>): IngestJobRecord => ({
@@ -371,14 +441,20 @@ export const createPostgresControlPlaneServiceStore = (
     async save(record) {
       await pool.query(
         `insert into api_keys (
-          id, tenant_id, name, key_hash, scopes, status, created_at, updated_at
-        ) values ($1,$2,$3,$4,$5::jsonb,$6,$7,$8)
+          id, tenant_id, name, key_hash, scopes, status, created_at, updated_at,
+          expires_at, revoked_at, last_used_at, rotated_from_api_key_id, description
+        ) values ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10,$11,$12,$13)
         on conflict (id) do update set
           tenant_id = excluded.tenant_id,
           name = excluded.name,
           key_hash = excluded.key_hash,
           scopes = excluded.scopes,
           status = excluded.status,
+          expires_at = excluded.expires_at,
+          revoked_at = excluded.revoked_at,
+          last_used_at = excluded.last_used_at,
+          rotated_from_api_key_id = excluded.rotated_from_api_key_id,
+          description = excluded.description,
           updated_at = excluded.updated_at`,
         [
           record.id,
@@ -389,9 +465,22 @@ export const createPostgresControlPlaneServiceStore = (
           record.status,
           record.createdAt,
           record.updatedAt,
+          record.expiresAt ?? null,
+          record.revokedAt ?? null,
+          record.lastUsedAt ?? null,
+          record.rotatedFromApiKeyId ?? null,
+          record.description ?? null,
         ],
       );
       return record;
+    },
+    async getById(id) {
+      const result = await pool.query(
+        `select * from api_keys where id = $1 limit 1`,
+        [id],
+      );
+      const row = result.rows[0];
+      return row === undefined ? null : asApiKeyRecord(row);
     },
     async getByHash(keyHash) {
       const result = await pool.query(
@@ -473,6 +562,13 @@ export const createPostgresControlPlaneServiceStore = (
          where route_key = $1 and idempotency_key = $2 and status = 'pending'`,
         [routeKey, idempotencyKey],
       );
+    },
+    async deleteOlderThan(cutoff) {
+      const result = await pool.query(
+        `delete from idempotency_records where updated_at < $1`,
+        [cutoff],
+      );
+      return result.rowCount ?? 0;
     },
   },
   ingestJobs: {
@@ -628,6 +724,14 @@ export const createPostgresControlPlaneServiceStore = (
         client.release();
       }
     },
+    async deleteOlderThan(cutoff) {
+      const result = await pool.query(
+        `delete from ingest_jobs
+         where updated_at < $1 and status in ('completed', 'failed', 'dead_letter')`,
+        [cutoff],
+      );
+      return result.rowCount ?? 0;
+    },
   },
   deadLetterJobs: {
     async save(record) {
@@ -654,6 +758,24 @@ export const createPostgresControlPlaneServiceStore = (
         `select * from dead_letter_jobs order by created_at asc`,
       );
       return result.rows.map(asDeadLetterJobRecord);
+    },
+    async getById(id) {
+      const result = await pool.query(
+        `select * from dead_letter_jobs where id = $1 limit 1`,
+        [id],
+      );
+      const row = result.rows[0];
+      return row === undefined ? null : asDeadLetterJobRecord(row);
+    },
+    async delete(id) {
+      await pool.query(`delete from dead_letter_jobs where id = $1`, [id]);
+    },
+    async deleteOlderThan(cutoff) {
+      const result = await pool.query(
+        `delete from dead_letter_jobs where created_at < $1`,
+        [cutoff],
+      );
+      return result.rowCount ?? 0;
     },
   },
 });
@@ -688,4 +810,86 @@ export const buildIdempotencyRecord = (
   response,
   createdAt: nowIso(),
   updatedAt: nowIso(),
+});
+
+export const revokeApiKey = async (
+  store: ControlPlaneServiceStore,
+  input: RevokeApiKeyInput,
+): Promise<ApiKeyRecord> => {
+  const existing = await store.apiKeys.getById(input.apiKeyId);
+  if (existing === null) {
+    throw new Error(`unknown api key ${input.apiKeyId}`);
+  }
+
+  const revoked: ApiKeyRecord = {
+    ...existing,
+    status: "revoked",
+    revokedAt: nowIso(),
+    updatedAt: nowIso(),
+  };
+  await store.apiKeys.save(revoked);
+  return revoked;
+};
+
+export const rotateApiKey = async (
+  store: ControlPlaneServiceStore,
+  input: RotateApiKeyInput,
+): Promise<IssuedApiKey> => {
+  const existing = await store.apiKeys.getById(input.apiKeyId);
+  if (existing === null) {
+    throw new Error(`unknown api key ${input.apiKeyId}`);
+  }
+  await revokeApiKey(store, { apiKeyId: input.apiKeyId });
+  return issueApiKey(store, {
+    tenantId: existing.tenantId,
+    name: input.name ?? existing.name,
+    scopes: input.scopes ?? existing.scopes,
+    ...((input.expiresAt ?? existing.expiresAt) === undefined
+      ? {}
+      : { expiresAt: input.expiresAt ?? existing.expiresAt }),
+    ...((input.description ?? existing.description) === undefined
+      ? {}
+      : { description: input.description ?? existing.description }),
+    rotatedFromApiKeyId: existing.id,
+  });
+};
+
+export const touchApiKeyLastUsed = async (
+  store: ControlPlaneServiceStore,
+  record: ApiKeyRecord,
+): Promise<ApiKeyRecord> => {
+  const updated: ApiKeyRecord = {
+    ...record,
+    lastUsedAt: nowIso(),
+    updatedAt: nowIso(),
+  };
+  await store.apiKeys.save(updated);
+  return updated;
+};
+
+export const requeueDeadLetterJob = async (
+  store: ControlPlaneServiceStore,
+  deadLetterJobId: string,
+): Promise<IngestJobRecord | null> => {
+  const deadLetter = await store.deadLetterJobs.getById(deadLetterJobId);
+  if (deadLetter === null) {
+    return null;
+  }
+  const queued = createQueuedIngestJob(
+    deadLetter.tenantId,
+    deadLetter.sessionId,
+    deadLetter.payload,
+  );
+  await store.ingestJobs.enqueue(queued);
+  await store.deadLetterJobs.delete(deadLetter.id);
+  return queued;
+};
+
+export const cleanupRetentionRecords = async (
+  store: ControlPlaneServiceStore,
+  cutoff: string,
+): Promise<RetentionCleanupResult> => ({
+  idempotencyDeleted: await store.idempotency.deleteOlderThan(cutoff),
+  ingestDeleted: await store.ingestJobs.deleteOlderThan(cutoff),
+  deadLetterDeleted: await store.deadLetterJobs.deleteOlderThan(cutoff),
 });

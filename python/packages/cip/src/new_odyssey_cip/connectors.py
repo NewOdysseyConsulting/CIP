@@ -5,6 +5,8 @@ from datetime import UTC, datetime
 from threading import Lock
 from typing import Any, Protocol
 
+import httpx
+
 from .records import ConnectorRateBucket, Environment
 from .repositories import ConnectorRateBucketFilter, MutableRepository
 
@@ -34,6 +36,8 @@ class ConnectorManifest:
     description: str
     tools: list[ConnectorToolContract]
     rate_limit_policy: RateLimitPolicy
+    driver_key: str | None = None
+    driver_config: dict[str, Any] | None = None
 
 
 @dataclass(slots=True)
@@ -73,6 +77,12 @@ class ConnectorStubContext:
 
 
 @dataclass(slots=True)
+class ConnectorInvocationContext(ConnectorStubContext):
+    endpoint: str
+    headers: dict[str, str] | None = None
+
+
+@dataclass(slots=True)
 class ConnectorToolExecutionResult:
     status: str
     connector_key: str
@@ -80,6 +90,47 @@ class ConnectorToolExecutionResult:
     quota: ConnectorQuotaLease
     message: str
     data: dict[str, Any]
+
+
+@dataclass(slots=True)
+class HttpJsonConnectorOperation:
+    tool_name: str
+    method: str
+    path: str
+    input_schema: dict[str, Any]
+    output_schema: dict[str, Any]
+    request_headers: dict[str, str] | None = None
+
+
+class ConnectorBackend(Protocol):
+    key: str
+
+    def healthcheck(
+        self,
+        manifest: ConnectorManifest,
+        context: ConnectorInvocationContext,
+    ) -> ConnectorHealthcheckResult: ...
+
+    def invoke(
+        self,
+        manifest: ConnectorManifest,
+        operation: HttpJsonConnectorOperation | ConnectorToolContract,
+        context: ConnectorInvocationContext,
+        input_data: dict[str, Any],
+    ) -> ConnectorToolExecutionResult: ...
+
+
+class ConnectorBackendRegistry:
+    def __init__(self, backends: list[ConnectorBackend] | None = None) -> None:
+        self._backends: dict[str, ConnectorBackend] = {}
+        for backend in backends or []:
+            self.register(backend)
+
+    def register(self, backend: ConnectorBackend) -> None:
+        self._backends[backend.key] = backend
+
+    def get(self, key: str) -> ConnectorBackend | None:
+        return self._backends.get(key)
 
 
 class RepositoryConnectorQuotaCoordinator:
@@ -153,6 +204,120 @@ class RepositoryConnectorQuotaCoordinator:
                 bucket=next_bucket,
                 retry_after_ms=0 if granted else int(1000 / bucket.max_requests_per_second),
             )
+
+
+def _acquire_quota_for_manifest(
+    context: ConnectorInvocationContext,
+    manifest: ConnectorManifest,
+    provider: str,
+    api_family: str = "http-json",
+) -> ConnectorQuotaLease:
+    return context.quota_coordinator.acquire(
+        ConnectorQuotaRequest(
+            provider=provider,
+            external_system_tenant=context.external_system_tenant,
+            environment=context.environment,
+            api_family=api_family,
+            max_requests_per_second=manifest.rate_limit_policy.max_requests_per_second,
+        )
+    )
+
+
+def _interpolate_path(path: str, input_data: dict[str, Any]) -> str:
+    result = path
+    for key, value in input_data.items():
+        result = result.replace(f"{{{key}}}", str(value))
+    if "{" in result:
+        raise ValueError(f"missing path parameter in {path}")
+    return result
+
+
+class HttpJsonConnectorBackend:
+    key = "http-json"
+
+    def __init__(self, client: httpx.Client | None = None) -> None:
+        self._client = client or httpx.Client()
+
+    def healthcheck(
+        self,
+        manifest: ConnectorManifest,
+        context: ConnectorInvocationContext,
+    ) -> ConnectorHealthcheckResult:
+        quota = _acquire_quota_for_manifest(context, manifest, manifest.key)
+        if not quota.granted:
+            return ConnectorHealthcheckResult(
+                connector_key=manifest.key,
+                status="degraded",
+                checked_at=_now_iso(),
+                details={"retry_after_ms": quota.retry_after_ms},
+            )
+        try:
+            response = self._client.get(
+                context.endpoint,
+                headers=context.headers or {},
+            )
+            return ConnectorHealthcheckResult(
+                connector_key=manifest.key,
+                status="ready" if response.is_success else "failed",
+                checked_at=_now_iso(),
+                details={"status_code": response.status_code},
+            )
+        except Exception as error:
+            return ConnectorHealthcheckResult(
+                connector_key=manifest.key,
+                status="failed",
+                checked_at=_now_iso(),
+                details={"error": str(error)},
+            )
+
+    def invoke(
+        self,
+        manifest: ConnectorManifest,
+        operation: HttpJsonConnectorOperation | ConnectorToolContract,
+        context: ConnectorInvocationContext,
+        input_data: dict[str, Any],
+    ) -> ConnectorToolExecutionResult:
+        quota = _acquire_quota_for_manifest(context, manifest, manifest.key)
+        tool_name = operation.name if isinstance(operation, ConnectorToolContract) else operation.tool_name
+        if not quota.granted:
+            return ConnectorToolExecutionResult(
+                status="failed",
+                connector_key=manifest.key,
+                tool_name=tool_name,
+                quota=quota,
+                message="connector quota exhausted",
+                data={"retry_after_ms": quota.retry_after_ms},
+            )
+        if isinstance(operation, ConnectorToolContract):
+            return ConnectorToolExecutionResult(
+                status="not_implemented",
+                connector_key=manifest.key,
+                tool_name=tool_name,
+                quota=quota,
+                message=f"{tool_name} is not backed by a live HTTP operation",
+                data={"phase": "stub"},
+            )
+
+        url = httpx.URL(context.endpoint).join(_interpolate_path(operation.path, input_data))
+        response = self._client.request(
+            operation.method,
+            str(url),
+            headers={**(operation.request_headers or {}), **(context.headers or {})},
+            json=None if operation.method in {"GET", "DELETE"} else input_data,
+        )
+        data: dict[str, Any]
+        try:
+            data = {"response": response.json()}
+        except Exception:
+            data = {"response": response.text}
+        return ConnectorToolExecutionResult(
+            status="ok" if response.is_success else "failed",
+            connector_key=manifest.key,
+            tool_name=tool_name,
+            quota=quota,
+            message="connector operation succeeded" if response.is_success else "connector operation failed",
+            data={"status_code": response.status_code, **data},
+        )
 
 
 def _execute_stub_tool(

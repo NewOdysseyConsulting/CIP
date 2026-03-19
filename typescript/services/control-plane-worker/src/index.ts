@@ -1,5 +1,6 @@
 import { CipControlPlane, createPostgresCipRepositories } from "@new-odyssey/cip";
 import {
+  cleanupRetentionRecords,
   createPostgresControlPlaneServiceStore,
   processNextIngestJob,
 } from "@new-odyssey/cip-control-plane-api";
@@ -11,6 +12,14 @@ const pollIntervalMs = Number.parseInt(
   10,
 );
 const maxAttempts = Number.parseInt(process.env.CIP_WORKER_MAX_ATTEMPTS ?? "5", 10);
+const retentionWindowHours = Number.parseInt(
+  process.env.CIP_RETENTION_WINDOW_HOURS ?? "168",
+  10,
+);
+const retentionSweepEveryLoops = Number.parseInt(
+  process.env.CIP_RETENTION_SWEEP_EVERY_LOOPS ?? "300",
+  10,
+);
 
 if (databaseUrl === undefined) {
   throw new Error("CIP_DATABASE_URL must be configured");
@@ -30,6 +39,7 @@ export const startControlPlaneWorker = async (): Promise<void> => {
   const serviceStore = createPostgresControlPlaneServiceStore(pool);
 
   let running = true;
+  let loopCount = 0;
 
   const shutdown = async (): Promise<void> => {
     running = false;
@@ -44,13 +54,36 @@ export const startControlPlaneWorker = async (): Promise<void> => {
   });
 
   while (running) {
+    loopCount += 1;
     const result = await processNextIngestJob({
       controlPlane,
       serviceStore,
       maxAttempts,
     });
+    if (loopCount % retentionSweepEveryLoops === 0) {
+      const cutoff = new Date(
+        Date.now() - retentionWindowHours * 60 * 60 * 1000,
+      ).toISOString();
+      const cleaned = await cleanupRetentionRecords(serviceStore, cutoff);
+      console.info(
+        JSON.stringify({
+          message: "retention.cleanup",
+          ...cleaned,
+          cutoff,
+        }),
+      );
+    }
     if (result === null) {
       await sleep(pollIntervalMs);
+    } else {
+      console.info(
+        JSON.stringify({
+          message: "ingest.job.processed",
+          outcome: result.outcome,
+          jobId: result.job.id,
+          tenantId: result.job.tenantId,
+        }),
+      );
     }
   }
 };

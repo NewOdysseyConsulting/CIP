@@ -28,6 +28,12 @@ const humanApprovalCheckpointSchema = z.object({
   expiresAt: z.string().optional(),
 });
 
+const runtimeProfileSchema = z.object({
+  provider: z.enum(["openai-agents-sdk", "anthropic", "custom"]),
+  modelProfile: z.enum(["default", "reasoning", "fast"]),
+  adapterVersion: z.string().optional(),
+});
+
 const runEventEnvelopeSchema = z.object({
   kind: z.literal("run_event"),
   type: z.enum([
@@ -124,6 +130,162 @@ export const rollbackDeploymentInputSchema = z.object({
   reason: z.string().optional(),
 });
 
+export const registerTenantInputSchema = z.object({
+  id: z.string().optional(),
+  slug: z.string().min(1),
+  displayName: z.string().min(1),
+  productTier: z.enum(["pegasus", "pantheon", "phoenix"]),
+  platforms: z.array(z.string().min(1)).min(1),
+  regions: z.array(z.string().min(1)).min(1),
+  status: z.enum(["active", "suspended", "retired"]).optional(),
+});
+
+export const registerConnectorDefinitionInputSchema = z.object({
+  id: z.string().optional(),
+  key: z.string().min(1),
+  version: z.string().optional(),
+  platform: z.string().min(1),
+  displayName: z.string().min(1),
+  driverKey: z.string().optional(),
+  driverConfig: z.record(z.string(), z.unknown()).optional(),
+  runtime: z.enum(["mcp", "native", "http"]),
+  authStrategy: z.enum(["oauth2", "api-key", "service-account", "custom"]),
+  source: z.enum(["first-party", "partner", "community"]),
+  capabilities: z.array(z.string().min(1)).min(1),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  status: z.enum(["draft", "active", "deprecated"]).optional(),
+});
+
+export const createCredentialBindingInputSchema = z.object({
+  id: z.string().optional(),
+  tenantId: z.string().min(1),
+  name: z.string().min(1),
+  provider: z.string().min(1),
+  secretBackendKey: z.string().optional(),
+  secretRef: z.string().min(1),
+  scopes: z.array(z.string().min(1)).min(1),
+  expiresAt: z.string().optional(),
+  status: z.enum(["active", "rotated", "revoked"]).optional(),
+});
+
+export const createConnectorBindingInputSchema = z.object({
+  id: z.string().optional(),
+  tenantId: z.string().min(1),
+  connectorDefinitionId: z.string().min(1),
+  credentialBindingId: z.string().min(1),
+  environment: z.enum(["development", "test", "sandbox", "production"]),
+  alias: z.string().min(1),
+  endpoint: z.string().min(1),
+  config: z.record(z.string(), z.unknown()).optional(),
+  status: z.enum(["active", "disabled"]).optional(),
+});
+
+const policyConditionSchema = z.object({
+  path: z.string().min(1),
+  operator: z.enum(["eq", "neq", "in", "contains", "exists", "regex", "gt", "gte", "lt", "lte"]),
+  value: z.unknown().optional(),
+});
+
+const policyClauseSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  match: z.enum(["all", "any"]),
+  conditions: z.array(policyConditionSchema).min(1),
+});
+
+const policyRuleSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string().optional(),
+  expression: z.string().optional(),
+  clauses: z.array(policyClauseSchema).optional(),
+  severity: z.enum(["info", "warn", "high", "critical"]),
+  action: z.enum(["allow", "flag", "block", "escalate"]),
+});
+
+export const publishPolicyPackInputSchema = z.object({
+  id: z.string().optional(),
+  key: z.string().min(1),
+  name: z.string().min(1),
+  domain: z.enum(["platform", "security", "expense", "recruitment", "onboarding"]),
+  version: z.string().min(1),
+  ownership: z.enum(["shared", "tenant"]),
+  tenantId: z.string().optional(),
+  rules: z.array(policyRuleSchema).min(1),
+  guardrailRefs: z.array(z.string().min(1)).optional(),
+  status: z.enum(["draft", "active", "retired"]).optional(),
+});
+
+export const publishGuardrailDefinitionInputSchema = z.object({
+  id: z.string().optional(),
+  key: z.string().min(1),
+  version: z.string().optional(),
+  name: z.string().min(1),
+  description: z.string().optional(),
+  configuration: z.record(z.string(), z.unknown()),
+  status: z.enum(["draft", "active", "retired"]).optional(),
+});
+
+export const registerAgentBlueprintInputSchema = z.object({
+  id: z.string().optional(),
+  key: z.string().min(1),
+  version: z.string().optional(),
+  name: z.string().min(1),
+  productTier: z.enum(["pegasus", "pantheon", "phoenix"]),
+  domain: z.enum(["platform", "security", "expense", "recruitment", "onboarding"]),
+  description: z.string().min(1),
+  runtime: runtimeProfileSchema,
+  connectorDefinitionIds: z.array(z.string().min(1)).min(1),
+  policyPackIds: z.array(z.string().min(1)).min(1),
+  guardrailDefinitionIds: z.array(z.string().min(1)).optional(),
+  releaseState: z.enum(["draft", "released", "deprecated"]).optional(),
+  supersedesBlueprintId: z.string().optional(),
+  handoffTargets: z.array(z.string().min(1)).optional(),
+  structuredOutput: z.string().optional(),
+  status: z.enum(["draft", "active", "deprecated"]).optional(),
+});
+
+export const deployAgentInputSchema = z.object({
+  id: z.string().optional(),
+  tenantId: z.string().min(1),
+  agentBlueprintId: z.string().min(1),
+  environment: z.enum(["development", "test", "sandbox", "production"]),
+  connectorBindingIds: z.array(z.string().min(1)).min(1),
+  policyPackIds: z.array(z.string().min(1)).optional(),
+  tags: z.array(z.string().min(1)).optional(),
+  status: z.enum(["provisioning", "active", "paused", "draining", "failed", "retired"]).optional(),
+});
+
+export const createApiKeyInputSchema = z.object({
+  tenantId: z.string().min(1),
+  name: z.string().min(1),
+  scopes: z.array(z.enum([
+    "sessions:read",
+    "sessions:write",
+    "approvals:write",
+    "approvals:resolve",
+    "deployments:read",
+    "deployments:write",
+    "tenants:read",
+    "audit:read",
+  ])).min(1),
+  description: z.string().optional(),
+  expiresAt: z.string().optional(),
+});
+
+export const rotateApiKeyInputSchema = z.object({
+  apiKeyId: z.string().min(1),
+  name: z.string().optional(),
+  scopes: createApiKeyInputSchema.shape.scopes.optional(),
+  description: z.string().optional(),
+  expiresAt: z.string().optional(),
+});
+
+export const revokeApiKeyInputSchema = z.object({
+  apiKeyId: z.string().min(1),
+  reason: z.string().optional(),
+});
+
 const stringPathParam = z.object({
   sessionId: z.string().min(1),
 });
@@ -140,6 +302,18 @@ export const tenantPathSchema = z.object({
 });
 export const optionalTenantQuerySchema = z.object({
   tenantId: z.string().min(1).optional(),
+});
+export const resourceIdPathSchema = z.object({
+  id: z.string().min(1),
+});
+export const ingestJobPathSchema = z.object({
+  jobId: z.string().min(1),
+});
+export const apiKeyPathSchema = z.object({
+  apiKeyId: z.string().min(1),
+});
+export const deadLetterJobPathSchema = z.object({
+  deadLetterJobId: z.string().min(1),
 });
 
 export const parseOrThrow = <TSchema extends z.ZodTypeAny>(

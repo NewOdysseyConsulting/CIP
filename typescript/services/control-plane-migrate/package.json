@@ -1,6 +1,6 @@
 {
   "name": "@new-odyssey/cip-control-plane-migrate",
-  "version": "0.1.0",
+  "version": "0.2.0-alpha.0",
   "private": true,
   "description": "Migration runner for the CIP control-plane Postgres schema.",
   "type": "module",
@@ -14,7 +14,7 @@
     "start": "node dist/src/index.js"
   },
   "dependencies": {
-    "@new-odyssey/cip-control-plane-api": "0.1.0",
+    "@new-odyssey/cip-control-plane-api": "0.2.0-alpha.0",
     "pg": "^8.16.3"
   },
   "devDependencies": {

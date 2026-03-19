@@ -90,6 +90,8 @@ export interface ConnectorDefinition extends BaseRecord {
   version: string;
   platform: string;
   displayName: string;
+  driverKey?: string;
+  driverConfig?: Record<string, unknown>;
   runtime: "mcp" | "native" | "http";
   authStrategy: "oauth2" | "api-key" | "service-account" | "custom";
   source: "first-party" | "partner" | "community";
@@ -102,6 +104,7 @@ export interface CredentialBinding extends BaseRecord {
   tenantId: string;
   name: string;
   provider: string;
+  secretBackendKey?: string;
   secretRef: string;
   scopes: string[];
   expiresAt?: IsoTimestamp;
