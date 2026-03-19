@@ -2,14 +2,21 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  AwsSecretsManagerSecretBackend,
   CipControlPlane,
   CipControlPlaneError,
+  CipAdminClient,
+  CipAuthError,
   DeterministicPolicyEvaluator,
   EnvironmentSecretResolver,
+  HttpCipAdminTransport,
+  HttpJsonConnectorBackend,
   InMemoryTelemetrySink,
   OpenAIAgentsRuntimeAdapter,
   RepositoryConnectorQuotaCoordinator,
+  SecretBackendRegistry,
   StubVaultResolver,
+  ConnectorBackendRegistry,
   createAdminApiHandlers,
   createCipControlPlaneAgent,
   createDefaultGuardrailCatalog,
@@ -412,4 +419,173 @@ test("connector stubs coordinate shared tenant quotas and assistant tools remain
   const agent = createCipControlPlaneAgent({ repositories });
   assert.equal(agent.name, "CIP Control Plane Assistant");
   assert.equal(agent.tools.length, 3);
+});
+
+test("HTTP admin transport and extension backends work through the public SDK surface", async () => {
+  const transport = new HttpCipAdminTransport({
+    baseUrl: "https://cip.example.com",
+    operatorToken: "operator-token",
+    fetchImpl: async (input, init) => {
+      const url = new URL(
+        typeof input === "string"
+          ? input
+          : input instanceof Request
+            ? input.url
+            : input.toString(),
+      );
+      if (url.pathname === "/v1/admin/tenants" && init?.method === "POST") {
+        return new Response(
+          JSON.stringify({
+            id: "tenant-1",
+            slug: "bootstrap-acme",
+            displayName: "Bootstrap Acme",
+            productTier: "pantheon",
+            platforms: ["workday"],
+            regions: ["eu-west-2"],
+            status: "active",
+            createdAt: "2026-03-19T09:00:00.000Z",
+            updatedAt: "2026-03-19T09:00:00.000Z",
+            revision: 1,
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+      if (url.pathname === "/v1/admin/dead-letter-jobs" && init?.method === undefined) {
+        return new Response("[]", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({ error: "unauthorized" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      });
+    },
+  });
+  const adminClient = new CipAdminClient(transport);
+
+  const createdTenant = await adminClient.createTenant({
+    slug: "bootstrap-acme",
+    displayName: "Bootstrap Acme",
+    productTier: "pantheon",
+    platforms: ["workday"],
+    regions: ["eu-west-2"],
+  });
+  const deadLetterJobs = await adminClient.listDeadLetterJobs();
+
+  assert.equal(createdTenant.slug, "bootstrap-acme");
+  assert.equal(deadLetterJobs.length, 0);
+  await assert.rejects(
+    () => adminClient.listTenants(),
+    (error: unknown) => error instanceof CipAuthError,
+  );
+
+  const repositories = createInMemoryCipRepositories();
+  const quotaCoordinator = new RepositoryConnectorQuotaCoordinator(
+    repositories.connectorRateBuckets,
+  );
+  const connectorBackend = new HttpJsonConnectorBackend(async (input) => {
+    const url = new URL(
+      typeof input === "string"
+        ? input
+        : input instanceof Request
+          ? input.url
+          : input.toString(),
+    );
+    if (url.pathname === "/health") {
+      return new Response("", { status: 200 });
+    }
+    return new Response(JSON.stringify({ userId: "123", enabled: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+  const connectorRegistry = new ConnectorBackendRegistry([connectorBackend]);
+  assert.equal(connectorRegistry.get("http-json"), connectorBackend);
+
+  const manifest = {
+    key: "generic-http",
+    version: "1.0.0",
+    platform: "custom",
+    description: "Generic HTTP JSON connector",
+    tools: [],
+    rateLimitPolicy: { maxRequestsPerSecond: 5 },
+  };
+  const healthcheck = await connectorBackend.healthcheck(manifest, {
+    tenantId: "tenant-1",
+    externalSystemTenant: "external-tenant-1",
+    environment: "production",
+    quotaCoordinator,
+    endpoint: "https://connector.example.com/health",
+  });
+  const invocation = await connectorBackend.invoke(
+    manifest,
+    {
+      toolName: "get_user",
+      method: "GET",
+      path: "/users/{userId}",
+      inputSchema: {},
+      outputSchema: {},
+    },
+    {
+      tenantId: "tenant-1",
+      externalSystemTenant: "external-tenant-1",
+      environment: "production",
+      quotaCoordinator,
+      endpoint: "https://connector.example.com",
+      headers: { authorization: "Bearer test" },
+    },
+    { userId: "123" },
+  );
+
+  assert.equal(healthcheck.status, "ready");
+  assert.equal(invocation.status, "ok");
+  assert.equal(
+    (invocation.data as { response: { enabled: boolean } }).response.enabled,
+    true,
+  );
+
+  let awsRequests = 0;
+  const awsBackend = new AwsSecretsManagerSecretBackend({
+    client: {
+      send: async () => {
+        awsRequests += 1;
+        return {
+          SecretString: "resolved-aws-secret",
+          ARN: "arn:aws:secretsmanager:eu-west-2:123456789012:secret:cip",
+          VersionId: "1",
+        };
+      },
+    } as never,
+    cacheTtlMs: 60_000,
+  });
+  const secretRegistry = new SecretBackendRegistry([awsBackend]);
+
+  const firstSecret = await secretRegistry.resolve(
+    "aws-secrets-manager",
+    {
+      provider: "aws-secrets-manager",
+      ref: "cip/bootstrap",
+    },
+    {
+      accessPolicy: {
+        allowedProviders: ["aws-secrets-manager"],
+        requiredScopes: [],
+      },
+    },
+  );
+  const secondSecret = await secretRegistry.resolve(
+    "aws-secrets-manager",
+    {
+      provider: "aws-secrets-manager",
+      ref: "cip/bootstrap",
+    },
+  );
+
+  assert.equal(firstSecret.value, "resolved-aws-secret");
+  assert.equal(secondSecret.value, "resolved-aws-secret");
+  assert.equal(awsRequests, 1);
 });

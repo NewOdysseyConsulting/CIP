@@ -14,6 +14,9 @@ This repository currently includes:
 - human-in-the-loop approval persistence
 - policy and guardrail infrastructure
 - connector contracts and stubs for Workday and Dynamics 365
+- a generic HTTP JSON connector backend and connector plugin registries
+- AWS Secrets Manager, environment, and stub secret backends
+- local and hosted admin clients in both SDKs
 - Helm and Terraform assets for self-hosted control-plane deployments
 
 ## What CIP Is
@@ -43,14 +46,20 @@ Pantheon and Phoenix consume CIP. They are not implemented here.
 
 ## Current Status
 
-This repository is phase-1 infrastructure. The core control-plane model is present and tested, but some operational surfaces are still intentionally narrow:
+This repository is beyond the phase-1 foundation. It now includes most of the prerelease implementation for phases 2 through 4:
 
-- the deployable control plane supports tracked sessions, async event ingest, approvals, replay, evidence bundles, deployment transitions, and rollback
-- operator tokens and SDK API keys are supported
-- API-key issuance is currently a bootstrap concern, not a public API endpoint
-- Workday and Dynamics 365 integrations are stubs, not live production connectors
+- a self-hosted TypeScript control plane with runtime, admin, bootstrap, and operational APIs
+- TypeScript and Python SDKs with local and hosted transports
+- public admin clients for tenant/bootstrap workflows
+- API-key issuance, rotation, revocation, ingest-job inspection, dead-letter requeue, and retention cleanup
+- JWT operator auth with `hs256` dev mode and `jwks-rs256` production mode
+- extension infrastructure for secret backends and connector backends
 
-If you want a production deployment, treat this repo as a strong foundation, not as a finished platform product.
+Still prerelease:
+
+- Workday and Dynamics 365 remain stub connectors in this repo
+- the public contracts should still be treated as alpha
+- stable `v1` compatibility guarantees are not in place yet
 
 ## Quick Start
 
@@ -126,6 +135,22 @@ const client = new CipClient(
 
 If you want CIP to track runtime lifecycle around an OpenAI Agents SDK run, use `CipRunTracker`.
 
+Admin/bootstrap flows use the hosted admin transport:
+
+```ts
+import {
+  CipAdminClient,
+  HttpCipAdminTransport,
+} from "@new-odyssey/cip";
+
+const admin = new CipAdminClient(
+  new HttpCipAdminTransport({
+    baseUrl: "https://cip.example.com",
+    operatorToken: process.env.CIP_OPERATOR_TOKEN,
+  }),
+);
+```
+
 ## Python SDK Example
 
 ```python
@@ -158,6 +183,19 @@ client = CipClient(
 )
 ```
 
+Hosted admin flows are also available in Python:
+
+```python
+from new_odyssey_cip import CipAdminClient, HttpCipAdminTransport
+
+admin = CipAdminClient(
+    HttpCipAdminTransport(
+        "https://cip.example.com",
+        operator_token="operator-token",
+    )
+)
+```
+
 ## Deployable Control Plane
 
 The deployable control plane is the self-hosted reference implementation of the CIP APIs.
@@ -173,7 +211,8 @@ Services in this repo:
 API service:
 
 - `CIP_DATABASE_URL`
-- `CIP_OPERATOR_SHARED_SECRET`
+- `CIP_OPERATOR_AUTH_MODE`
+- either `CIP_OPERATOR_SHARED_SECRET` for `hs256` mode or `CIP_OPERATOR_JWKS_URL` for `jwks-rs256` mode
 
 Optional API service variables:
 
@@ -188,6 +227,8 @@ Worker:
 - `CIP_DATABASE_URL`
 - `CIP_WORKER_POLL_INTERVAL_MS`
 - `CIP_WORKER_MAX_ATTEMPTS`
+- `CIP_RETENTION_WINDOW_HOURS`
+- `CIP_RETENTION_SWEEP_EVERY_LOOPS`
 
 ### Local Hosted Quickstart
 
@@ -202,37 +243,45 @@ npm run build:ts
 
 ```bash
 export CIP_DATABASE_URL=postgres://postgres:postgres@localhost:5432/cip
+export CIP_OPERATOR_AUTH_MODE=hs256
 export CIP_OPERATOR_SHARED_SECRET=replace-me
 ```
 
-3. Run the shared Postgres migration.
+3. Run migrations.
 
 ```bash
-npm run start --workspace @new-odyssey/cip-control-plane-migrate
+npm run start --workspace @new-odyssey/cip-control-plane-migrate -- migrate
 ```
 
-4. Start the API.
+4. Seed an initial tenant if you want a clean bootstrap from the CLI.
+
+```bash
+echo '{"slug":"acme","displayName":"Acme","productTier":"pantheon","platforms":["workday"],"regions":["eu-west-2"]}' \
+  | npm run start --workspace @new-odyssey/cip-control-plane-migrate -- seed-tenant --json -
+```
+
+5. Start the API.
 
 ```bash
 npm run start --workspace @new-odyssey/cip-control-plane-api
 ```
 
-5. Start the worker in a separate shell.
+6. Start the worker in a separate shell.
 
 ```bash
 export CIP_DATABASE_URL=postgres://postgres:postgres@localhost:5432/cip
 npm run start --workspace @new-odyssey/cip-control-plane-worker
 ```
 
-### Bootstrap Caveat
+### Bootstrap CLI
 
-The v1 API does not yet expose public endpoints for:
+The migration package also acts as the self-hosted bootstrap CLI:
 
-- issuing SDK API keys
-- minting operator tokens
-- tenant/bootstrap provisioning workflows
-
-For now, bootstrap those out of band through your own provisioning code, direct database seeding, or internal helpers in the service packages.
+- `migrate`
+- `seed-tenant --json <path|->`
+- `issue-api-key --json <path|->`
+- `revoke-api-key --api-key-id <id>`
+- `publish-bootstrap-resources --json <path|->`
 
 ## Public SDK Surface
 
@@ -240,10 +289,16 @@ The main SDK entry points are:
 
 - `CipControlPlane`
 - `CipClient`
+- `CipAdminClient`
 - `LocalCipControlPlaneTransport`
 - `HttpCipControlPlaneTransport`
+- `HttpCipAdminTransport`
 - `CipRunTracker`
 - `OpenAIAgentsRuntimeAdapter`
+- `SecretBackendRegistry`
+- `AwsSecretsManagerSecretBackend`
+- `ConnectorBackendRegistry`
+- `HttpJsonConnectorBackend`
 - `createInMemoryCipRepositories`
 - `createPostgresCipRepositories`
 
@@ -269,6 +324,7 @@ The hosted reference implementation exposes REST endpoints under `/v1`, includin
 
 - `POST /v1/sessions`
 - `POST /v1/sessions/{sessionId}/events:enqueue`
+- `GET /v1/ingest-jobs/{jobId}`
 - `POST /v1/sessions/{sessionId}:complete`
 - `GET /v1/sessions/{sessionId}/replay`
 - `GET /v1/evidence-bundles/{sessionId}`
@@ -278,6 +334,15 @@ The hosted reference implementation exposes REST endpoints under `/v1`, includin
 - `GET /v1/deployments`
 - `GET /v1/tenants/{tenantId}`
 - `GET /v1/audit-events`
+
+Admin and operational endpoints under `/v1/admin` include:
+
+- tenants, connector definitions, credential bindings, connector bindings
+- policy packs, guardrail definitions, agent blueprints, deployments
+- API key issue, rotate, and revoke
+- dead-letter listing and requeue
+- retention cleanup
+- `/metrics`, `/healthz`, and `/readyz`
 
 See:
 
@@ -348,14 +413,14 @@ Included here:
 - control-plane orchestration
 - policy and guardrail infrastructure
 - deployable reference control-plane services
-- connector contracts and stubs
+- connector contracts, stubs, and a generic HTTP JSON backend
+- AWS Secrets Manager secret backend plus local/dev secret resolvers
 - Helm, Terraform, SQL, and schema assets
 
 Not included here:
 
 - proprietary Pantheon or Phoenix business logic
 - closed policy packs or analytics
-- full enterprise vault integrations
 - finished production connectors for every target platform
 
 ## License

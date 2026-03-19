@@ -3,7 +3,7 @@
   "info": {
     "title": "CIP Control Plane API",
     "version": "0.2.0-alpha.0",
-    "description": "REST API contract for the deployable CIP control plane. This prerelease schema documents the runtime, admin, and operational API surface."
+    "description": "REST API contract for the deployable CIP control plane. This prerelease schema documents runtime, admin, and operational endpoints."
   },
   "paths": {
     "/healthz": {
@@ -20,6 +20,21 @@
         "responses": {
           "200": { "description": "Service is ready." },
           "503": { "description": "Service is not ready." }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "metrics",
+        "responses": {
+          "200": {
+            "description": "Prometheus metrics.",
+            "content": {
+              "text/plain": {
+                "schema": { "type": "string" }
+              }
+            }
+          }
         }
       }
     },
@@ -43,8 +58,14 @@
           }
         },
         "responses": {
-          "200": { "description": "Run session created." },
-          "401": { "description": "Missing or invalid SDK API key." }
+          "200": {
+            "description": "Run session created.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./cip-control-plane.schema.json#/$defs/RunSession" }
+              }
+            }
+          }
         }
       }
     },
@@ -74,7 +95,73 @@
           }
         },
         "responses": {
-          "202": { "description": "Batch accepted for asynchronous processing." }
+          "202": {
+            "description": "Batch accepted for asynchronous processing.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./cip-control-plane.schema.json#/$defs/CipIngestReceipt" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ingest-jobs/{jobId}": {
+      "get": {
+        "operationId": "getIngestJob",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ingest job state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "$ref": "./cip-control-plane.schema.json#/$defs/IngestJobRecord" },
+                    { "type": "null" }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{sessionId}/approval-requests": {
+      "post": {
+        "operationId": "requestApproval",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RequestHumanApprovalInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Approval request created.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./cip-control-plane.schema.json#/$defs/ApprovalRequest" }
+              }
+            }
+          }
         }
       }
     },
@@ -104,31 +191,14 @@
           }
         },
         "responses": {
-          "200": { "description": "Run session completed." }
-        }
-      }
-    },
-    "/v1/sessions/{sessionId}/approval-requests": {
-      "post": {
-        "operationId": "requestApproval",
-        "parameters": [
-          {
-            "name": "sessionId",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string" }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/RequestHumanApprovalInput" }
+          "200": {
+            "description": "Run session completed.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./cip-control-plane.schema.json#/$defs/RunSession" }
+              }
             }
           }
-        },
-        "responses": {
-          "200": { "description": "Approval request created." }
         }
       }
     },
@@ -144,7 +214,14 @@
           }
         ],
         "responses": {
-          "200": { "description": "Replayed run session." }
+          "200": {
+            "description": "Replayed run session.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ReplayedRunSession" }
+              }
+            }
+          }
         }
       }
     },
@@ -160,7 +237,19 @@
           }
         ],
         "responses": {
-          "200": { "description": "Evidence bundle or null." }
+          "200": {
+            "description": "Evidence bundle or null.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "$ref": "./cip-control-plane.schema.json#/$defs/EvidenceBundle" },
+                    { "type": "null" }
+                  ]
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -184,7 +273,14 @@
           }
         },
         "responses": {
-          "200": { "description": "Approval request resolved." }
+          "200": {
+            "description": "Approval request resolved.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./cip-control-plane.schema.json#/$defs/ApprovalRequest" }
+              }
+            }
+          }
         }
       }
     },
@@ -208,7 +304,14 @@
           }
         },
         "responses": {
-          "200": { "description": "Deployment transitioned." }
+          "200": {
+            "description": "Deployment transitioned.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./cip-control-plane.schema.json#/$defs/DeploymentRecord" }
+              }
+            }
+          }
         }
       }
     },
@@ -232,7 +335,14 @@
           }
         },
         "responses": {
-          "200": { "description": "Deployment rolled back." }
+          "200": {
+            "description": "Deployment rolled back.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./cip-control-plane.schema.json#/$defs/DeploymentRecord" }
+              }
+            }
+          }
         }
       }
     },
@@ -248,7 +358,17 @@
           }
         ],
         "responses": {
-          "200": { "description": "Deployment records." }
+          "200": {
+            "description": "Deployment records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "./cip-control-plane.schema.json#/$defs/DeploymentRecord" }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -264,7 +384,19 @@
           }
         ],
         "responses": {
-          "200": { "description": "Tenant record or null." }
+          "200": {
+            "description": "Tenant record or null.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "$ref": "./cip-control-plane.schema.json#/$defs/TenantRecord" },
+                    { "type": "null" }
+                  ]
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -280,22 +412,854 @@
           }
         ],
         "responses": {
-          "200": { "description": "Audit event records." }
+          "200": {
+            "description": "Audit event records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "./cip-control-plane.schema.json#/$defs/AuditEvent" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/tenants": {
+      "get": {
+        "operationId": "listTenants",
+        "responses": {
+          "200": {
+            "description": "Tenant records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "./cip-control-plane.schema.json#/$defs/TenantRecord" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createTenant",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RegisterTenantInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tenant created.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./cip-control-plane.schema.json#/$defs/TenantRecord" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/tenants/{tenantId}": {
+      "get": {
+        "operationId": "adminGetTenant",
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant record or null.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "$ref": "./cip-control-plane.schema.json#/$defs/TenantRecord" },
+                    { "type": "null" }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/connector-definitions": {
+      "get": {
+        "operationId": "listConnectorDefinitions",
+        "responses": {
+          "200": {
+            "description": "Connector definitions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "./cip-control-plane.schema.json#/$defs/ConnectorDefinition" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createConnectorDefinition",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RegisterConnectorDefinitionInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Connector definition created.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./cip-control-plane.schema.json#/$defs/ConnectorDefinition" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/connector-definitions/{id}": {
+      "get": {
+        "operationId": "getConnectorDefinition",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Connector definition or null.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "$ref": "./cip-control-plane.schema.json#/$defs/ConnectorDefinition" },
+                    { "type": "null" }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/credential-bindings": {
+      "get": {
+        "operationId": "listCredentialBindings",
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Credential bindings.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "./cip-control-plane.schema.json#/$defs/CredentialBinding" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createCredentialBinding",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateCredentialBindingInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Credential binding created.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./cip-control-plane.schema.json#/$defs/CredentialBinding" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/credential-bindings/{id}": {
+      "get": {
+        "operationId": "getCredentialBinding",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Credential binding or null.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "$ref": "./cip-control-plane.schema.json#/$defs/CredentialBinding" },
+                    { "type": "null" }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/connector-bindings": {
+      "get": {
+        "operationId": "listConnectorBindings",
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Connector bindings.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "./cip-control-plane.schema.json#/$defs/ConnectorBinding" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createConnectorBinding",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateConnectorBindingInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Connector binding created.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./cip-control-plane.schema.json#/$defs/ConnectorBinding" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/connector-bindings/{id}": {
+      "get": {
+        "operationId": "getConnectorBinding",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Connector binding or null.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "$ref": "./cip-control-plane.schema.json#/$defs/ConnectorBinding" },
+                    { "type": "null" }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/policy-packs": {
+      "get": {
+        "operationId": "listPolicyPacks",
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Policy packs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "./cip-control-plane.schema.json#/$defs/PolicyPack" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "publishPolicyPack",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PublishPolicyPackInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Policy pack published.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./cip-control-plane.schema.json#/$defs/PolicyPack" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/policy-packs/{id}": {
+      "get": {
+        "operationId": "getPolicyPack",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Policy pack or null.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "$ref": "./cip-control-plane.schema.json#/$defs/PolicyPack" },
+                    { "type": "null" }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/guardrail-definitions": {
+      "get": {
+        "operationId": "listGuardrailDefinitions",
+        "responses": {
+          "200": {
+            "description": "Guardrail definitions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "./cip-control-plane.schema.json#/$defs/GuardrailDefinition" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "publishGuardrailDefinition",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PublishGuardrailDefinitionInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Guardrail definition published.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./cip-control-plane.schema.json#/$defs/GuardrailDefinition" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/guardrail-definitions/{id}": {
+      "get": {
+        "operationId": "getGuardrailDefinition",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Guardrail definition or null.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "$ref": "./cip-control-plane.schema.json#/$defs/GuardrailDefinition" },
+                    { "type": "null" }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/agent-blueprints": {
+      "get": {
+        "operationId": "listAgentBlueprints",
+        "responses": {
+          "200": {
+            "description": "Agent blueprints.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "./cip-control-plane.schema.json#/$defs/AgentBlueprint" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "registerAgentBlueprint",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RegisterAgentBlueprintInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Agent blueprint registered.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./cip-control-plane.schema.json#/$defs/AgentBlueprint" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/agent-blueprints/{id}": {
+      "get": {
+        "operationId": "getAgentBlueprint",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent blueprint or null.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "$ref": "./cip-control-plane.schema.json#/$defs/AgentBlueprint" },
+                    { "type": "null" }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/deployments": {
+      "get": {
+        "operationId": "adminListDeployments",
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deployments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "./cip-control-plane.schema.json#/$defs/DeploymentRecord" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createDeployment",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DeployAgentInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deployment created.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./cip-control-plane.schema.json#/$defs/DeploymentRecord" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/deployments/{id}": {
+      "get": {
+        "operationId": "getDeployment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deployment or null.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "$ref": "./cip-control-plane.schema.json#/$defs/DeploymentRecord" },
+                    { "type": "null" }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/api-keys": {
+      "get": {
+        "operationId": "listApiKeys",
+        "parameters": [
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "API key records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "./cip-control-plane.schema.json#/$defs/ApiKeyRecord" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "issueApiKey",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateApiKeyRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "API key issued.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/IssuedApiKeyResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/api-keys/{apiKeyId}": {
+      "get": {
+        "operationId": "getApiKey",
+        "parameters": [
+          {
+            "name": "apiKeyId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "API key record or null.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "$ref": "./cip-control-plane.schema.json#/$defs/ApiKeyRecord" },
+                    { "type": "null" }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/api-keys/{apiKeyId}:rotate": {
+      "post": {
+        "operationId": "rotateApiKey",
+        "parameters": [
+          {
+            "name": "apiKeyId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RotateApiKeyRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "API key rotated.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/IssuedApiKeyResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/api-keys/{apiKeyId}:revoke": {
+      "post": {
+        "operationId": "revokeApiKey",
+        "parameters": [
+          {
+            "name": "apiKeyId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RevokeApiKeyRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "API key revoked.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./cip-control-plane.schema.json#/$defs/ApiKeyRecord" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/dead-letter-jobs": {
+      "get": {
+        "operationId": "listDeadLetterJobs",
+        "responses": {
+          "200": {
+            "description": "Dead-letter jobs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "./cip-control-plane.schema.json#/$defs/DeadLetterJobRecord" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/dead-letter-jobs/{deadLetterJobId}:requeue": {
+      "post": {
+        "operationId": "requeueDeadLetterJob",
+        "parameters": [
+          {
+            "name": "deadLetterJobId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RequeueDeadLetterJobRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Job requeued or null.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "$ref": "./cip-control-plane.schema.json#/$defs/IngestJobRecord" },
+                    { "type": "null" }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/retention/cleanup": {
+      "post": {
+        "operationId": "cleanupRetention",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RetentionCleanupRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Retention cleanup result.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/RetentionCleanupResult" }
+              }
+            }
+          }
         }
       }
     }
   },
   "components": {
     "schemas": {
+      "AuditActor": {
+        "type": "object",
+        "required": ["type", "id"],
+        "properties": {
+          "type": { "enum": ["agent", "human", "system"] },
+          "id": { "type": "string" }
+        }
+      },
+      "TraceCorrelation": {
+        "type": "object",
+        "required": ["provider"],
+        "properties": {
+          "provider": { "enum": ["openai", "custom"] },
+          "traceId": { "type": "string" },
+          "spanId": { "type": "string" },
+          "conversationId": { "type": "string" },
+          "responseId": { "type": "string" }
+        }
+      },
+      "HumanApprovalCheckpoint": {
+        "type": "object",
+        "required": ["checkpointId", "reason"],
+        "properties": {
+          "checkpointId": { "type": "string" },
+          "reason": { "type": "string" },
+          "guardrailDefinitionId": { "type": "string" },
+          "policyPackId": { "type": "string" },
+          "expiresAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "RuntimeProfile": {
+        "type": "object",
+        "required": ["provider", "modelProfile"],
+        "properties": {
+          "provider": { "enum": ["openai-agents-sdk", "anthropic", "custom"] },
+          "modelProfile": { "enum": ["default", "reasoning", "fast"] },
+          "adapterVersion": { "type": "string" }
+        }
+      },
       "StartRunSessionInput": {
         "type": "object",
         "required": ["tenantId", "deploymentId", "inputSummary"],
         "properties": {
+          "id": { "type": "string" },
           "tenantId": { "type": "string" },
           "deploymentId": { "type": "string" },
           "correlationId": { "type": "string" },
           "inputSummary": { "type": "string" },
-          "traceCorrelation": { "type": "object" }
+          "traceCorrelation": { "$ref": "#/components/schemas/TraceCorrelation" }
         }
       },
       "CompleteRunSessionInput": {
@@ -312,8 +1276,8 @@
         "required": ["sessionId", "checkpoint"],
         "properties": {
           "sessionId": { "type": "string" },
-          "checkpoint": { "type": "object" },
-          "actor": { "type": "object" }
+          "checkpoint": { "$ref": "#/components/schemas/HumanApprovalCheckpoint" },
+          "actor": { "$ref": "#/components/schemas/AuditActor" }
         }
       },
       "ResolveApprovalRequestInput": {
@@ -325,7 +1289,7 @@
             "enum": ["pending", "approved", "rejected", "expired", "cancelled"]
           },
           "resolutionComment": { "type": "string" },
-          "actor": { "type": "object" }
+          "actor": { "$ref": "#/components/schemas/AuditActor" }
         }
       },
       "TransitionDeploymentInput": {
@@ -336,7 +1300,7 @@
           "targetStatus": {
             "enum": ["provisioning", "active", "paused", "draining", "failed", "retired"]
           },
-          "actor": { "type": "object" },
+          "actor": { "$ref": "#/components/schemas/AuditActor" },
           "reason": { "type": "string" }
         }
       },
@@ -346,7 +1310,7 @@
         "properties": {
           "deploymentId": { "type": "string" },
           "targetBlueprintId": { "type": "string" },
-          "actor": { "type": "object" },
+          "actor": { "$ref": "#/components/schemas/AuditActor" },
           "reason": { "type": "string" }
         }
       },
@@ -357,10 +1321,24 @@
             "required": ["kind", "type"],
             "properties": {
               "kind": { "const": "run_event" },
-              "type": { "type": "string" },
-              "actor": { "type": "object" },
+              "type": {
+                "enum": [
+                  "run_started",
+                  "tool_called",
+                  "tool_completed",
+                  "handoff_started",
+                  "handoff_completed",
+                  "guardrail_triggered",
+                  "policy_decided",
+                  "approval_requested",
+                  "approval_resolved",
+                  "run_completed",
+                  "run_failed"
+                ]
+              },
+              "actor": { "$ref": "#/components/schemas/AuditActor" },
               "payload": { "type": "object" },
-              "traceCorrelation": { "type": "object" },
+              "traceCorrelation": { "$ref": "#/components/schemas/TraceCorrelation" },
               "occurredAt": { "type": "string", "format": "date-time" }
             }
           },
@@ -369,10 +1347,21 @@
             "required": ["kind", "category", "action", "actor", "payload"],
             "properties": {
               "kind": { "const": "audit_event" },
-              "category": { "type": "string" },
+              "category": {
+                "enum": [
+                  "tenant",
+                  "connector",
+                  "policy",
+                  "deployment",
+                  "session",
+                  "security",
+                  "approval",
+                  "runtime"
+                ]
+              },
               "action": { "type": "string" },
-              "severity": { "type": "string" },
-              "actor": { "type": "object" },
+              "severity": { "enum": ["info", "warn", "error", "critical"] },
+              "actor": { "$ref": "#/components/schemas/AuditActor" },
               "payload": { "type": "object" },
               "deploymentId": { "type": "string" },
               "occurredAt": { "type": "string", "format": "date-time" }
@@ -388,8 +1377,281 @@
           "sessionId": { "type": "string" },
           "events": {
             "type": "array",
+            "minItems": 1,
             "items": { "$ref": "#/components/schemas/CipIngestEvent" }
           }
+        }
+      },
+      "RegisterTenantInput": {
+        "type": "object",
+        "required": ["slug", "displayName", "productTier", "platforms", "regions"],
+        "properties": {
+          "id": { "type": "string" },
+          "slug": { "type": "string" },
+          "displayName": { "type": "string" },
+          "productTier": { "enum": ["pegasus", "pantheon", "phoenix"] },
+          "platforms": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "regions": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "status": { "enum": ["active", "suspended", "retired"] }
+        }
+      },
+      "RegisterConnectorDefinitionInput": {
+        "type": "object",
+        "required": ["key", "platform", "displayName", "runtime", "authStrategy", "source", "capabilities"],
+        "properties": {
+          "id": { "type": "string" },
+          "key": { "type": "string" },
+          "version": { "type": "string" },
+          "platform": { "type": "string" },
+          "displayName": { "type": "string" },
+          "driverKey": { "type": "string" },
+          "driverConfig": { "type": "object" },
+          "runtime": { "enum": ["mcp", "native", "http"] },
+          "authStrategy": { "enum": ["oauth2", "api-key", "service-account", "custom"] },
+          "source": { "enum": ["first-party", "partner", "community"] },
+          "capabilities": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "metadata": { "type": "object" },
+          "status": { "enum": ["draft", "active", "deprecated"] }
+        }
+      },
+      "CreateCredentialBindingInput": {
+        "type": "object",
+        "required": ["tenantId", "name", "provider", "secretRef", "scopes"],
+        "properties": {
+          "id": { "type": "string" },
+          "tenantId": { "type": "string" },
+          "name": { "type": "string" },
+          "provider": { "type": "string" },
+          "secretBackendKey": { "type": "string" },
+          "secretRef": { "type": "string" },
+          "scopes": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "expiresAt": { "type": "string", "format": "date-time" },
+          "status": { "enum": ["active", "rotated", "revoked"] }
+        }
+      },
+      "CreateConnectorBindingInput": {
+        "type": "object",
+        "required": ["tenantId", "connectorDefinitionId", "credentialBindingId", "environment", "alias", "endpoint"],
+        "properties": {
+          "id": { "type": "string" },
+          "tenantId": { "type": "string" },
+          "connectorDefinitionId": { "type": "string" },
+          "credentialBindingId": { "type": "string" },
+          "environment": { "enum": ["development", "test", "sandbox", "production"] },
+          "alias": { "type": "string" },
+          "endpoint": { "type": "string" },
+          "config": { "type": "object" },
+          "status": { "enum": ["active", "disabled"] }
+        }
+      },
+      "PolicyCondition": {
+        "type": "object",
+        "required": ["path", "operator"],
+        "properties": {
+          "path": { "type": "string" },
+          "operator": {
+            "enum": ["eq", "neq", "in", "contains", "exists", "regex", "gt", "gte", "lt", "lte"]
+          },
+          "value": {}
+        }
+      },
+      "PolicyClause": {
+        "type": "object",
+        "required": ["id", "name", "match", "conditions"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "match": { "enum": ["all", "any"] },
+          "conditions": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/components/schemas/PolicyCondition" }
+          }
+        }
+      },
+      "PolicyRule": {
+        "type": "object",
+        "required": ["id", "name", "severity", "action"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "expression": { "type": "string" },
+          "clauses": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PolicyClause" }
+          },
+          "severity": { "enum": ["info", "warn", "high", "critical"] },
+          "action": { "enum": ["allow", "flag", "block", "escalate"] }
+        }
+      },
+      "PublishPolicyPackInput": {
+        "type": "object",
+        "required": ["key", "name", "domain", "version", "ownership", "rules"],
+        "properties": {
+          "id": { "type": "string" },
+          "key": { "type": "string" },
+          "name": { "type": "string" },
+          "domain": { "enum": ["platform", "security", "expense", "recruitment", "onboarding"] },
+          "version": { "type": "string" },
+          "ownership": { "enum": ["shared", "tenant"] },
+          "tenantId": { "type": "string" },
+          "rules": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/components/schemas/PolicyRule" }
+          },
+          "guardrailRefs": { "type": "array", "items": { "type": "string" } },
+          "status": { "enum": ["draft", "active", "retired"] }
+        }
+      },
+      "PublishGuardrailDefinitionInput": {
+        "type": "object",
+        "required": ["key", "name", "configuration"],
+        "properties": {
+          "id": { "type": "string" },
+          "key": { "type": "string" },
+          "version": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "configuration": { "type": "object" },
+          "status": { "enum": ["draft", "active", "retired"] }
+        }
+      },
+      "RegisterAgentBlueprintInput": {
+        "type": "object",
+        "required": ["key", "name", "productTier", "domain", "description", "runtime", "connectorDefinitionIds", "policyPackIds"],
+        "properties": {
+          "id": { "type": "string" },
+          "key": { "type": "string" },
+          "version": { "type": "string" },
+          "name": { "type": "string" },
+          "productTier": { "enum": ["pegasus", "pantheon", "phoenix"] },
+          "domain": { "enum": ["platform", "security", "expense", "recruitment", "onboarding"] },
+          "description": { "type": "string" },
+          "runtime": { "$ref": "#/components/schemas/RuntimeProfile" },
+          "connectorDefinitionIds": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "policyPackIds": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "guardrailDefinitionIds": { "type": "array", "items": { "type": "string" } },
+          "releaseState": { "enum": ["draft", "released", "deprecated"] },
+          "supersedesBlueprintId": { "type": "string" },
+          "handoffTargets": { "type": "array", "items": { "type": "string" } },
+          "structuredOutput": { "type": "string" },
+          "status": { "enum": ["draft", "active", "deprecated"] }
+        }
+      },
+      "DeployAgentInput": {
+        "type": "object",
+        "required": ["tenantId", "agentBlueprintId", "environment", "connectorBindingIds"],
+        "properties": {
+          "id": { "type": "string" },
+          "tenantId": { "type": "string" },
+          "agentBlueprintId": { "type": "string" },
+          "environment": { "enum": ["development", "test", "sandbox", "production"] },
+          "connectorBindingIds": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "policyPackIds": { "type": "array", "items": { "type": "string" } },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "status": { "enum": ["provisioning", "active", "paused", "draining", "failed", "retired"] }
+        }
+      },
+      "CreateApiKeyRequest": {
+        "type": "object",
+        "required": ["tenantId", "name", "scopes"],
+        "properties": {
+          "tenantId": { "type": "string" },
+          "name": { "type": "string" },
+          "scopes": { "$ref": "#/components/schemas/ApiKeyScopes" },
+          "description": { "type": "string" },
+          "expiresAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "RotateApiKeyRequest": {
+        "type": "object",
+        "required": ["apiKeyId"],
+        "properties": {
+          "apiKeyId": { "type": "string" },
+          "name": { "type": "string" },
+          "scopes": { "$ref": "#/components/schemas/ApiKeyScopes" },
+          "description": { "type": "string" },
+          "expiresAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "RevokeApiKeyRequest": {
+        "type": "object",
+        "required": ["apiKeyId"],
+        "properties": {
+          "apiKeyId": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      },
+      "RequeueDeadLetterJobRequest": {
+        "type": "object",
+        "required": ["deadLetterJobId"],
+        "properties": {
+          "deadLetterJobId": { "type": "string" }
+        }
+      },
+      "IssuedApiKeyResponse": {
+        "type": "object",
+        "required": ["record", "plainTextKey"],
+        "properties": {
+          "record": { "$ref": "./cip-control-plane.schema.json#/$defs/ApiKeyRecord" },
+          "plainTextKey": { "type": "string" }
+        }
+      },
+      "ReplayedRunSession": {
+        "type": "object",
+        "required": ["session", "runEvents", "approvalRequests", "reconstructedStatus"],
+        "properties": {
+          "session": { "$ref": "./cip-control-plane.schema.json#/$defs/RunSession" },
+          "runEvents": {
+            "type": "array",
+            "items": { "$ref": "./cip-control-plane.schema.json#/$defs/RunEvent" }
+          },
+          "approvalRequests": {
+            "type": "array",
+            "items": { "$ref": "./cip-control-plane.schema.json#/$defs/ApprovalRequest" }
+          },
+          "evidenceBundle": {
+            "oneOf": [
+              { "$ref": "./cip-control-plane.schema.json#/$defs/EvidenceBundle" },
+              { "type": "null" }
+            ]
+          },
+          "reconstructedStatus": {
+            "enum": ["queued", "running", "waiting-human", "completed", "failed"]
+          }
+        }
+      },
+      "RetentionCleanupRequest": {
+        "type": "object",
+        "properties": {
+          "cutoff": { "type": "string", "format": "date-time" }
+        }
+      },
+      "RetentionCleanupResult": {
+        "type": "object",
+        "required": ["idempotencyDeleted", "ingestDeleted", "deadLetterDeleted"],
+        "properties": {
+          "idempotencyDeleted": { "type": "integer", "minimum": 0 },
+          "ingestDeleted": { "type": "integer", "minimum": 0 },
+          "deadLetterDeleted": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "ApiKeyScopes": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "enum": [
+            "sessions:read",
+            "sessions:write",
+            "approvals:write",
+            "approvals:resolve",
+            "deployments:read",
+            "deployments:write",
+            "tenants:read",
+            "audit:read"
+          ]
         }
       }
     }

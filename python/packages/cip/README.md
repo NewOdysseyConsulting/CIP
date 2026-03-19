@@ -6,9 +6,15 @@ This package provides the core CIP library surface for Python teams:
 
 - `CipControlPlane`
 - `CipClient`
+- `CipAdminClient`
 - `LocalCipControlPlaneTransport`
 - `HttpCipControlPlaneTransport`
+- `HttpCipAdminTransport`
 - `CipRunTracker`
+- `SecretBackendRegistry`
+- `AwsSecretsManagerSecretBackend`
+- `ConnectorBackendRegistry`
+- `HttpJsonConnectorBackend`
 - in-memory and Postgres repository factories
 - OpenAI Agents SDK runtime integration
 

@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
+import path from "node:path";
 
 import {
   CipControlPlane,
@@ -13,6 +15,7 @@ import {
 import { createControlPlaneApiApp } from "../src/app.js";
 import { signOperatorToken } from "../src/auth.js";
 import {
+  createQueuedIngestJob,
   createInMemoryControlPlaneServiceStore,
   issueApiKey,
 } from "../src/store.js";
@@ -178,6 +181,34 @@ const buildFixture = async () => {
     deployment: activeDeployment,
     apiKeyRecord: issuedApiKey.record,
     apiKey: issuedApiKey.plainTextKey,
+    operatorToken,
+  };
+};
+
+const buildEmptyFixture = async () => {
+  const repositories = createInMemoryCipRepositories();
+  const telemetry = new InMemoryTelemetrySink();
+  const controlPlane = new CipControlPlane(repositories, {
+    telemetrySink: telemetry,
+  });
+  const serviceStore = createInMemoryControlPlaneServiceStore();
+  const app = createControlPlaneApiApp({
+    controlPlane,
+    repositories,
+    serviceStore,
+    operatorAuth,
+  });
+
+  const operatorToken = await signOperatorToken(
+    { sub: "operator-bootstrap", scope: "control-plane:admin" },
+    operatorAuth,
+  );
+
+  return {
+    app,
+    controlPlane,
+    repositories,
+    serviceStore,
     operatorToken,
   };
 };
@@ -458,4 +489,348 @@ test("invalid request payloads are rejected with 400", async () => {
   assert.equal(invalidBatch.statusCode, 400);
 
   await fixture.app.close();
+});
+
+test("admin bootstrap APIs create managed resources, issue keys, and requeue dead-letter jobs", async () => {
+  const fixture = await buildEmptyFixture();
+  const headers = {
+    authorization: `Bearer ${fixture.operatorToken}`,
+  };
+
+  const tenantResponse = await fixture.app.inject({
+    method: "POST",
+    url: "/v1/admin/tenants",
+    headers,
+    payload: {
+      slug: "bootstrap-acme",
+      displayName: "Bootstrap Acme",
+      productTier: "pantheon",
+      platforms: ["workday"],
+      regions: ["eu-west-2"],
+    },
+  });
+  assert.equal(tenantResponse.statusCode, 200);
+  const tenant = parseJson<{ id: string } & Record<string, unknown>>(tenantResponse.body);
+
+  const connectorDefinitionResponse = await fixture.app.inject({
+    method: "POST",
+    url: "/v1/admin/connector-definitions",
+    headers,
+    payload: {
+      key: workdayConnectorManifest.key,
+      version: workdayConnectorManifest.version,
+      platform: workdayConnectorManifest.platform,
+      displayName: "Workday MCP Server",
+      driverKey: "http-json",
+      runtime: "mcp",
+      authStrategy: "service-account",
+      source: "first-party",
+      capabilities: workdayConnectorManifest.tools.map((tool) => tool.name),
+    },
+  });
+  assert.equal(connectorDefinitionResponse.statusCode, 200);
+  const connectorDefinition = parseJson<{ id: string }>(connectorDefinitionResponse.body);
+
+  const credentialResponse = await fixture.app.inject({
+    method: "POST",
+    url: "/v1/admin/credential-bindings",
+    headers,
+    payload: {
+      tenantId: tenant.id,
+      name: "bootstrap-workday-prod",
+      provider: "aws-secrets-manager",
+      secretBackendKey: "aws-secrets-manager",
+      secretRef: "arn:aws:secretsmanager:eu-west-2:123456789012:secret:bootstrap",
+      scopes: ["tenant:prod"],
+    },
+  });
+  assert.equal(credentialResponse.statusCode, 200);
+  const credential = parseJson<{ id: string }>(credentialResponse.body);
+
+  const connectorBindingResponse = await fixture.app.inject({
+    method: "POST",
+    url: "/v1/admin/connector-bindings",
+    headers,
+    payload: {
+      tenantId: tenant.id,
+      connectorDefinitionId: connectorDefinition.id,
+      credentialBindingId: credential.id,
+      environment: "production",
+      alias: "workday-prod",
+      endpoint: "https://acme.workday.com",
+      config: { tenantAlias: "bootstrap" },
+    },
+  });
+  assert.equal(connectorBindingResponse.statusCode, 200);
+  const connectorBinding = parseJson<{ id: string }>(connectorBindingResponse.body);
+
+  const [guardrailTemplate] = createDefaultGuardrailCatalog();
+  assert.ok(guardrailTemplate);
+  const guardrailResponse = await fixture.app.inject({
+    method: "POST",
+    url: "/v1/admin/guardrail-definitions",
+    headers,
+    payload: {
+      key: guardrailTemplate.key,
+      version: guardrailTemplate.version,
+      name: guardrailTemplate.name,
+      configuration: guardrailTemplate.configuration,
+    },
+  });
+  assert.equal(guardrailResponse.statusCode, 200);
+  const guardrail = parseJson<{ id: string }>(guardrailResponse.body);
+
+  const policyResponse = await fixture.app.inject({
+    method: "POST",
+    url: "/v1/admin/policy-packs",
+    headers,
+    payload: {
+      key: "bootstrap-policy",
+      name: "Bootstrap Policy",
+      domain: "security",
+      version: "1.0.0",
+      ownership: "shared",
+      rules: [
+        {
+          id: "least-privilege",
+          name: "Least Privilege",
+          severity: "high",
+          action: "flag",
+          clauses: [
+            {
+              id: "scope-delta",
+              name: "scope-delta",
+              match: "all",
+              conditions: [{ path: "permissions.delta", operator: "gt", value: 0 }],
+            },
+          ],
+        },
+      ],
+      guardrailRefs: [guardrail.id],
+    },
+  });
+  assert.equal(policyResponse.statusCode, 200);
+  const policyPack = parseJson<{ id: string }>(policyResponse.body);
+
+  const blueprintResponse = await fixture.app.inject({
+    method: "POST",
+    url: "/v1/admin/agent-blueprints",
+    headers,
+    payload: {
+      key: "bootstrap-agent",
+      version: "1.0.0",
+      name: "Bootstrap Agent",
+      productTier: "pantheon",
+      domain: "security",
+      description: "Bootstrap flow test agent.",
+      runtime: {
+        provider: "openai-agents-sdk",
+        modelProfile: "reasoning",
+      },
+      connectorDefinitionIds: [connectorDefinition.id],
+      policyPackIds: [policyPack.id],
+      guardrailDefinitionIds: [guardrail.id],
+    },
+  });
+  assert.equal(blueprintResponse.statusCode, 200);
+  const blueprint = parseJson<{ id: string }>(blueprintResponse.body);
+
+  const deploymentResponse = await fixture.app.inject({
+    method: "POST",
+    url: "/v1/admin/deployments",
+    headers,
+    payload: {
+      tenantId: tenant.id,
+      agentBlueprintId: blueprint.id,
+      environment: "production",
+      connectorBindingIds: [connectorBinding.id],
+      tags: ["bootstrap"],
+    },
+  });
+  assert.equal(deploymentResponse.statusCode, 200);
+  const deployment = parseJson<{ id: string }>(deploymentResponse.body);
+
+  const activeDeploymentResponse = await fixture.app.inject({
+    method: "POST",
+    url: `/v1/deployments/${deployment.id}:transition`,
+    headers,
+    payload: {
+      deploymentId: deployment.id,
+      targetStatus: "active",
+    },
+  });
+  assert.equal(activeDeploymentResponse.statusCode, 200);
+  const activeDeployment = parseJson<{ id: string } & Record<string, unknown>>(activeDeploymentResponse.body);
+
+  const apiKeyResponse = await fixture.app.inject({
+    method: "POST",
+    url: "/v1/admin/api-keys",
+    headers,
+    payload: {
+      tenantId: tenant.id,
+      name: "bootstrap sdk key",
+      scopes: ["sessions:read", "sessions:write", "approvals:write"],
+      description: "bootstrap test key",
+    },
+  });
+  assert.equal(apiKeyResponse.statusCode, 200);
+  const issuedApiKey = parseJson<{
+    record: { id: string; status: string };
+    plainTextKey: string;
+  }>(apiKeyResponse.body);
+
+  const sessionResponse = await fixture.app.inject({
+    method: "POST",
+    url: "/v1/sessions",
+    headers: {
+      authorization: `Bearer ${issuedApiKey.plainTextKey}`,
+      "Idempotency-Key": "bootstrap-session-create",
+    },
+    payload: {
+      tenantId: tenant.id,
+      deploymentId: activeDeployment.id,
+      inputSummary: "Bootstrap runtime session.",
+    },
+  });
+  assert.equal(sessionResponse.statusCode, 200);
+  const session = parseJson<{ id: string }>(sessionResponse.body);
+
+  const enqueueResponse = await fixture.app.inject({
+    method: "POST",
+    url: `/v1/sessions/${session.id}/events:enqueue`,
+    headers: {
+      authorization: `Bearer ${issuedApiKey.plainTextKey}`,
+      "Idempotency-Key": "bootstrap-session-events",
+    },
+    payload: {
+      tenantId: tenant.id,
+      sessionId: session.id,
+      events: [
+        {
+          kind: "run_event",
+          type: "tool_called",
+          payload: { tool: "list_security_groups" },
+        },
+      ],
+    },
+  });
+  assert.equal(enqueueResponse.statusCode, 202);
+  const ingestReceipt = parseJson<{ ingestJobId: string }>(enqueueResponse.body);
+
+  const sdkJobView = await fixture.app.inject({
+    method: "GET",
+    url: `/v1/ingest-jobs/${ingestReceipt.ingestJobId}`,
+    headers: {
+      authorization: `Bearer ${issuedApiKey.plainTextKey}`,
+    },
+  });
+  assert.equal(sdkJobView.statusCode, 200);
+  assert.equal(parseJson<{ id: string }>(sdkJobView.body).id, ingestReceipt.ingestJobId);
+
+  const operatorJobView = await fixture.app.inject({
+    method: "GET",
+    url: `/v1/ingest-jobs/${ingestReceipt.ingestJobId}`,
+    headers,
+  });
+  assert.equal(operatorJobView.statusCode, 200);
+
+  const rotatedResponse = await fixture.app.inject({
+    method: "POST",
+    url: `/v1/admin/api-keys/${issuedApiKey.record.id}:rotate`,
+    headers,
+    payload: {
+      apiKeyId: issuedApiKey.record.id,
+      name: "rotated bootstrap key",
+    },
+  });
+  assert.equal(rotatedResponse.statusCode, 200);
+  const rotated = parseJson<{
+    record: { id: string; rotatedFromApiKeyId?: string };
+    plainTextKey: string;
+  }>(rotatedResponse.body);
+  assert.equal(rotated.record.rotatedFromApiKeyId, issuedApiKey.record.id);
+
+  const revokedOldKey = await fixture.app.inject({
+    method: "GET",
+    url: `/v1/admin/api-keys/${issuedApiKey.record.id}`,
+    headers,
+  });
+  assert.equal(revokedOldKey.statusCode, 200);
+  assert.equal(parseJson<{ status: string }>(revokedOldKey.body).status, "revoked");
+
+  const deadLetterSeed = createQueuedIngestJob(tenant.id, session.id, {
+    tenantId: tenant.id,
+    sessionId: session.id,
+    events: [],
+  });
+  await fixture.serviceStore.ingestJobs.enqueue(deadLetterSeed);
+  await fixture.serviceStore.ingestJobs.moveToDeadLetter(deadLetterSeed.id, "simulated failure");
+
+  const deadLetterList = await fixture.app.inject({
+    method: "GET",
+    url: "/v1/admin/dead-letter-jobs",
+    headers,
+  });
+  assert.equal(deadLetterList.statusCode, 200);
+  const deadLetterJobs = parseJson<Array<{ id: string }>>(deadLetterList.body);
+  assert.equal(deadLetterJobs.length, 1);
+
+  const requeueResponse = await fixture.app.inject({
+    method: "POST",
+    url: `/v1/admin/dead-letter-jobs/${deadLetterJobs[0]?.id}:requeue`,
+    headers,
+    payload: {
+      deadLetterJobId: deadLetterJobs[0]?.id,
+    },
+  });
+  assert.equal(requeueResponse.statusCode, 200);
+  assert.equal(parseJson<{ status: string }>(requeueResponse.body).status, "queued");
+
+  const cleanupResponse = await fixture.app.inject({
+    method: "POST",
+    url: "/v1/admin/retention/cleanup",
+    headers,
+    payload: {
+      cutoff: new Date(Date.now() + 60_000).toISOString(),
+    },
+  });
+  assert.equal(cleanupResponse.statusCode, 200);
+  const cleanup = parseJson<{ idempotencyDeleted: number }>(cleanupResponse.body);
+  assert.ok(cleanup.idempotencyDeleted >= 0);
+
+  await fixture.app.close();
+});
+
+test("published OpenAPI spec covers the hosted runtime and admin routes", async () => {
+  const schemaPath = path.resolve(
+    process.cwd(),
+    "../../..",
+    "schemas",
+    "cip-admin-api.openapi.json",
+  );
+  const spec = JSON.parse(readFileSync(schemaPath, "utf8")) as {
+    info: { version: string };
+    paths: Record<string, unknown>;
+  };
+
+  const requiredPaths = [
+    "/metrics",
+    "/v1/ingest-jobs/{jobId}",
+    "/v1/admin/tenants",
+    "/v1/admin/connector-definitions",
+    "/v1/admin/credential-bindings",
+    "/v1/admin/connector-bindings",
+    "/v1/admin/policy-packs",
+    "/v1/admin/guardrail-definitions",
+    "/v1/admin/agent-blueprints",
+    "/v1/admin/deployments",
+    "/v1/admin/api-keys",
+    "/v1/admin/dead-letter-jobs",
+    "/v1/admin/retention/cleanup",
+  ];
+
+  assert.equal(spec.info.version, "0.2.0-alpha.0");
+  for (const requiredPath of requiredPaths) {
+    assert.ok(spec.paths[requiredPath], `missing OpenAPI path ${requiredPath}`);
+  }
 });
