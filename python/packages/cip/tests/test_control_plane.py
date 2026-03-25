@@ -5,11 +5,13 @@ import unittest
 
 from new_odyssey_cip import (
     AppendRunEventInput,
+    AuditActor,
     CipAgentSpec,
     CipControlPlane,
     CipControlPlaneError,
     CipRunRequest,
     CompleteRunSessionInput,
+    CreateComplianceArtifactInput,
     ConnectorStubContext,
     CreateConnectorBindingInput,
     CreateCredentialBindingInput,
@@ -25,6 +27,8 @@ from new_odyssey_cip import (
     PolicyRule,
     PublishGuardrailDefinitionInput,
     PublishPolicyPackInput,
+    RecordDisclosureInput,
+    RecordHumanReviewInput,
     RegisterAgentBlueprintInput,
     RegisterConnectorDefinitionInput,
     RegisterTenantInput,
@@ -37,6 +41,7 @@ from new_odyssey_cip import (
     StartRunSessionInput,
     StubVaultResolver,
     TransitionDeploymentInput,
+    UpsertComplianceProfileInput,
     VaultReference,
     create_admin_api_handlers,
     create_cip_control_plane_agent,
@@ -358,6 +363,168 @@ class CipControlPlaneTests(unittest.TestCase):
             ["run_started", "approval_requested", "approval_resolved", "run_failed"],
         )
         self.assertEqual(replay.evidence_bundle.guardrail_versions[0].version, "1.0.0")
+
+    def test_compliance_profiles_gate_activation_and_session_completion(self) -> None:
+        fixture = create_workday_security_fixture()
+        control_plane = fixture["control_plane"]
+        tenant = fixture["tenant"]
+        deployment = fixture["deployment"]
+
+        paused = control_plane.transition_deployment(
+            TransitionDeploymentInput(deployment_id=deployment.id, target_status="paused")
+        )
+        profile = control_plane.upsert_compliance_profile(
+            UpsertComplianceProfileInput(
+                deployment_id=paused.id,
+                regime="eu-ai-act",
+                serves_eu_users=True,
+                intended_purpose="Legal intake triage",
+                risk_tier="high-risk",
+                transparency={
+                    "required": True,
+                    "notice_text": "You are interacting with AI.",
+                    "placement": "banner-and-first-message",
+                    "requires_acknowledgement": True,
+                },
+                oversight={
+                    "required": True,
+                    "require_approval_before_completion": True,
+                    "minimum_human_reviewers": 1,
+                    "stop_mechanism_required": True,
+                },
+                logging={
+                    "require_verified_actors": True,
+                    "retention_days": 3650,
+                },
+            )
+        )
+
+        with self.assertRaisesRegex(
+            CipControlPlaneError,
+            "missing required compliance artifact technical_documentation:approved",
+        ):
+            control_plane.transition_deployment(
+                TransitionDeploymentInput(deployment_id=paused.id, target_status="active")
+            )
+
+        required_artifacts = [
+            ("technical_documentation", "approved"),
+            ("fundamental_rights_impact_assessment", "approved"),
+            ("conformity_assessment", "approved"),
+            ("eu_declaration_of_conformity", "filed"),
+            ("eu_database_registration", "filed"),
+            ("post_market_monitoring_plan", "approved"),
+        ]
+        for kind, status in required_artifacts:
+            control_plane.create_compliance_artifact(
+                CreateComplianceArtifactInput(
+                    deployment_id=paused.id,
+                    kind=kind,
+                    status=status,
+                    owner="compliance",
+                    summary=f"{kind} is {status}.",
+                )
+            )
+
+        activated = control_plane.transition_deployment(
+            TransitionDeploymentInput(deployment_id=paused.id, target_status="active")
+        )
+        session = control_plane.start_run_session(
+            StartRunSessionInput(
+                tenant_id=tenant.id,
+                deployment_id=activated.id,
+                input_summary="Review a legal intake workflow.",
+            )
+        )
+
+        with self.assertRaisesRegex(
+            CipControlPlaneError,
+            "requires disclosure before completion",
+        ):
+            control_plane.complete_run_session(
+                CompleteRunSessionInput(
+                    session_id=session.id,
+                    status="completed",
+                    output_summary="Should not complete yet.",
+                )
+            )
+
+        disclosure = control_plane.record_disclosure(
+            RecordDisclosureInput(
+                session_id=session.id,
+                disclosure_version="v1",
+                surface="banner_and_first_message",
+                presented_at="2026-03-18T11:00:00+00:00",
+                acknowledged_at="2026-03-18T11:00:05+00:00",
+            )
+        )
+
+        with self.assertRaisesRegex(
+            CipControlPlaneError,
+            "requires 1 approved human review\\(s\\) before completion",
+        ):
+            control_plane.complete_run_session(
+                CompleteRunSessionInput(
+                    session_id=session.id,
+                    status="completed",
+                    output_summary="Still awaiting review.",
+                )
+            )
+
+        with self.assertRaisesRegex(
+            CipControlPlaneError,
+            "requires a verified human reviewer actor",
+        ):
+            control_plane.record_human_review(
+                RecordHumanReviewInput(
+                    session_id=session.id,
+                    decision="approved",
+                    reviewed_at="2026-03-18T11:01:00+00:00",
+                    reviewer_id="spoofed-reviewer",
+                )
+            )
+
+        review = control_plane.record_human_review(
+            RecordHumanReviewInput(
+                session_id=session.id,
+                decision="approved",
+                reviewed_at="2026-03-18T11:02:00+00:00",
+                comment="Reviewed and approved.",
+                actor=AuditActor(type="human", id="operator-1"),
+            )
+        )
+        completed = control_plane.complete_run_session(
+            CompleteRunSessionInput(
+                session_id=session.id,
+                status="completed",
+                output_summary="Legal intake workflow approved.",
+            )
+        )
+
+        replay = control_plane.replay_run_session(session.id)
+        evidence = control_plane.get_evidence_bundle(session.id)
+
+        self.assertEqual(profile.id, session.compliance_profile_snapshot.id)
+        self.assertEqual(activated.status, "active")
+        self.assertEqual(completed.status, "completed")
+        self.assertEqual(
+            [event.type for event in replay.run_events],
+            [
+                "run_started",
+                "disclosure_presented",
+                "disclosure_acknowledged",
+                "human_review_completed",
+                "run_completed",
+            ],
+        )
+        self.assertEqual(replay.compliance_profile.id, profile.id)
+        self.assertEqual(replay.disclosure_records[0].id, disclosure.id)
+        self.assertEqual(replay.human_reviews[0].id, review.id)
+        self.assertTrue(len(replay.compliance_artifact_ids) >= 6)
+        self.assertEqual(evidence.compliance_profile.id, profile.id)
+        self.assertIn(disclosure.id, evidence.disclosure_record_ids)
+        self.assertIn(review.id, evidence.human_review_ids)
+        self.assertTrue(all(artifact_id in evidence.compliance_artifact_ids for artifact_id in replay.compliance_artifact_ids))
 
     def test_policy_admin_runtime_and_secrets(self) -> None:
         fixture = create_workday_security_fixture()

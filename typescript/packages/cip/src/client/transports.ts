@@ -109,7 +109,12 @@ export class LocalCipControlPlaneTransport
         await this.options.controlPlane.appendRunEvent({
           sessionId: batch.sessionId,
           type: event.type,
-          ...(event.actor === undefined ? {} : { actor: event.actor }),
+          actor: {
+            type: "agent",
+            id: "local-cip-transport",
+          },
+          ...(event.actor === undefined ? {} : { assertedActor: event.actor }),
+          actorVerification: event.actorVerification ?? "asserted",
           ...(event.payload === undefined ? {} : { payload: event.payload }),
           ...(event.traceCorrelation === undefined
             ? {}
@@ -127,7 +132,12 @@ export class LocalCipControlPlaneTransport
             : { deploymentId: event.deploymentId }),
           category: event.category,
           action: event.action,
-          actor: event.actor,
+          actor: {
+            type: "agent",
+            id: "local-cip-transport",
+          },
+          assertedActor: event.actor,
+          actorVerification: event.actorVerification ?? "asserted",
           payload: event.payload,
           ...(event.severity === undefined ? {} : { severity: event.severity }),
           ...(event.occurredAt === undefined
@@ -150,6 +160,18 @@ export class LocalCipControlPlaneTransport
 
   async resolveApproval(input: ResolveApprovalRequestRequest) {
     return this.options.controlPlane.resolveApprovalRequest(input);
+  }
+
+  async getComplianceProfile(deploymentId: string) {
+    return this.options.controlPlane.getComplianceProfile(deploymentId);
+  }
+
+  async recordDisclosure(input: import("./types.js").RecordDisclosureRequest) {
+    return this.options.controlPlane.recordDisclosure(input);
+  }
+
+  async recordHumanReview(input: import("./types.js").RecordHumanReviewRequest) {
+    return this.options.controlPlane.recordHumanReview(input);
   }
 
   async completeSession(input: CompleteSessionRequest) {
@@ -309,6 +331,37 @@ export class HttpCipControlPlaneTransport
   async resolveApproval(input: ResolveApprovalRequestRequest) {
     return this.requestJson<Awaited<ReturnType<CipControlPlaneTransport["resolveApproval"]>>>(
       `/v1/approval-requests/${input.approvalRequestId}:resolve`,
+      {
+        method: "POST",
+        headers: this.buildHeaders("operator"),
+        body: JSON.stringify(input),
+      },
+    );
+  }
+
+  async getComplianceProfile(deploymentId: string) {
+    return this.requestJson<Awaited<ReturnType<CipControlPlaneTransport["getComplianceProfile"]>>>(
+      `/v1/deployments/${deploymentId}/compliance-profile`,
+      {
+        headers: this.buildHeaders("sdk"),
+      },
+    );
+  }
+
+  async recordDisclosure(input: import("./types.js").RecordDisclosureRequest) {
+    return this.requestJson<Awaited<ReturnType<CipControlPlaneTransport["recordDisclosure"]>>>(
+      `/v1/sessions/${input.sessionId}:record-disclosure`,
+      {
+        method: "POST",
+        headers: this.buildHeaders("sdk"),
+        body: JSON.stringify(input),
+      },
+    );
+  }
+
+  async recordHumanReview(input: import("./types.js").RecordHumanReviewRequest) {
+    return this.requestJson<Awaited<ReturnType<CipControlPlaneTransport["recordHumanReview"]>>>(
+      `/v1/sessions/${input.sessionId}:record-human-review`,
       {
         method: "POST",
         headers: this.buildHeaders("operator"),
@@ -575,6 +628,49 @@ export class HttpCipAdminTransport
   async getDeployment(id: string) {
     return this.requestJson<Awaited<ReturnType<CipAdminTransport["getDeployment"]>>>(`/v1/admin/deployments/${id}`, {
       headers: this.buildHeaders("operator"),
+    });
+  }
+
+  async getComplianceProfile(deploymentId: string) {
+    return this.requestJson<Awaited<ReturnType<CipAdminTransport["getComplianceProfile"]>>>(
+      `/v1/admin/deployments/${deploymentId}/compliance-profile`,
+      {
+        headers: this.buildHeaders("operator"),
+      },
+    );
+  }
+
+  async upsertComplianceProfile(
+    deploymentId: string,
+    input: import("../services/cip-control-plane.js").UpsertComplianceProfileInput,
+  ) {
+    return this.requestJson<
+      Awaited<ReturnType<CipAdminTransport["upsertComplianceProfile"]>>
+    >(`/v1/admin/deployments/${deploymentId}/compliance-profile`, {
+      method: "PUT",
+      headers: this.buildHeaders("operator"),
+      body: JSON.stringify(input),
+    });
+  }
+
+  async listComplianceArtifacts(deploymentId: string) {
+    return this.requestJson<
+      Awaited<ReturnType<CipAdminTransport["listComplianceArtifacts"]>>
+    >(`/v1/admin/deployments/${deploymentId}/compliance-artifacts`, {
+      headers: this.buildHeaders("operator"),
+    });
+  }
+
+  async createComplianceArtifact(
+    deploymentId: string,
+    input: import("../services/cip-control-plane.js").CreateComplianceArtifactInput,
+  ) {
+    return this.requestJson<
+      Awaited<ReturnType<CipAdminTransport["createComplianceArtifact"]>>
+    >(`/v1/admin/deployments/${deploymentId}/compliance-artifacts`, {
+      method: "POST",
+      headers: this.buildHeaders("operator"),
+      body: JSON.stringify(input),
     });
   }
 

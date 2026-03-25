@@ -2,13 +2,17 @@ import type {
   AgentBlueprint,
   ApprovalRequest,
   AuditEvent,
+  ComplianceArtifact,
+  ComplianceProfile,
   ConnectorBinding,
   ConnectorDefinition,
   ConnectorRateBucket,
   CredentialBinding,
+  DisclosureRecord,
   DeploymentRecord,
   EvidenceBundle,
   GuardrailDefinition,
+  HumanReviewRecord,
   PolicyPack,
   RunEvent,
   RunSession,
@@ -18,13 +22,17 @@ import type {
   AgentBlueprintFilter,
   ApprovalRequestFilter,
   AuditEventFilter,
+  ComplianceArtifactFilter,
+  ComplianceProfileFilter,
   ConnectorBindingFilter,
   ConnectorDefinitionFilter,
   ConnectorRateBucketFilter,
   CredentialBindingFilter,
+  DisclosureRecordFilter,
   DeploymentFilter,
   EvidenceBundleFilter,
   GuardrailDefinitionFilter,
+  HumanReviewRecordFilter,
   PolicyPackFilter,
   RunEventFilter,
   RunSessionFilter,
@@ -215,6 +223,24 @@ const deploymentMatches = (
   matchesOptional(record.environment, filter.environment) &&
   matchesOptional(record.status, filter.status);
 
+const complianceProfileMatches = (
+  record: ComplianceProfile,
+  filter: ComplianceProfileFilter,
+): boolean =>
+  matchesOptional(record.tenantId, filter.tenantId) &&
+  matchesOptional(record.deploymentId, filter.deploymentId) &&
+  matchesOptional(record.regime, filter.regime) &&
+  matchesOptional(record.riskTier, filter.riskTier);
+
+const complianceArtifactMatches = (
+  record: ComplianceArtifact,
+  filter: ComplianceArtifactFilter,
+): boolean =>
+  matchesOptional(record.tenantId, filter.tenantId) &&
+  matchesOptional(record.deploymentId, filter.deploymentId) &&
+  matchesOptional(record.kind, filter.kind) &&
+  matchesOptional(record.status, filter.status);
+
 const runSessionMatches = (
   record: RunSession,
   filter: RunSessionFilter,
@@ -239,6 +265,23 @@ const approvalRequestMatches = (
   matchesOptional(record.deploymentId, filter.deploymentId) &&
   matchesOptional(record.sessionId, filter.sessionId) &&
   matchesOptional(record.status, filter.status);
+
+const disclosureRecordMatches = (
+  record: DisclosureRecord,
+  filter: DisclosureRecordFilter,
+): boolean =>
+  matchesOptional(record.tenantId, filter.tenantId) &&
+  matchesOptional(record.deploymentId, filter.deploymentId) &&
+  matchesOptional(record.sessionId, filter.sessionId);
+
+const humanReviewRecordMatches = (
+  record: HumanReviewRecord,
+  filter: HumanReviewRecordFilter,
+): boolean =>
+  matchesOptional(record.tenantId, filter.tenantId) &&
+  matchesOptional(record.deploymentId, filter.deploymentId) &&
+  matchesOptional(record.sessionId, filter.sessionId) &&
+  matchesOptional(record.decision, filter.decision);
 
 const evidenceBundleMatches = (
   record: EvidenceBundle,
@@ -286,6 +329,14 @@ export const createInMemoryCipRepositories = (): CipRepositories => ({
     DeploymentRecord,
     DeploymentFilter
   >(deploymentMatches),
+  complianceProfiles: new InMemoryMutableRepository<
+    ComplianceProfile,
+    ComplianceProfileFilter
+  >(complianceProfileMatches),
+  complianceArtifacts: new InMemoryMutableRepository<
+    ComplianceArtifact,
+    ComplianceArtifactFilter
+  >(complianceArtifactMatches),
   runSessions: new InMemoryMutableRepository<RunSession, RunSessionFilter>(
     runSessionMatches,
   ),
@@ -293,6 +344,14 @@ export const createInMemoryCipRepositories = (): CipRepositories => ({
     ApprovalRequest,
     ApprovalRequestFilter
   >(approvalRequestMatches),
+  disclosureRecords: new InMemoryMutableRepository<
+    DisclosureRecord,
+    DisclosureRecordFilter
+  >(disclosureRecordMatches),
+  humanReviewRecords: new InMemoryMutableRepository<
+    HumanReviewRecord,
+    HumanReviewRecordFilter
+  >(humanReviewRecordMatches),
   evidenceBundles: new InMemoryMutableRepository<
     EvidenceBundle,
     EvidenceBundleFilter

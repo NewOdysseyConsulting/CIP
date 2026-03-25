@@ -4,6 +4,7 @@ import {
   CipControlPlaneError,
   type CipEventBatch,
   type CipRepositories,
+  type CreateComplianceArtifactInput,
   type CompleteRunSessionInput,
   type CreateConnectorBindingInput,
   type CreateCredentialBindingInput,
@@ -13,11 +14,14 @@ import {
   type RegisterAgentBlueprintInput,
   type RegisterConnectorDefinitionInput,
   type RegisterTenantInput,
+  type RecordDisclosureInput,
+  type RecordHumanReviewInput,
   type RequestHumanApprovalInput,
   type ResolveApprovalRequestInput,
   type RollbackDeploymentInput,
   type StartRunSessionInput,
   type TransitionDeploymentInput,
+  type UpsertComplianceProfileInput,
 } from "@new-odyssey/cip";
 
 import {
@@ -49,6 +53,7 @@ import {
   approvalRequestPathSchema,
   cipEventBatchSchema,
   completeRunSessionInputSchema,
+  createComplianceArtifactInputSchema,
   createApiKeyInputSchema,
   createConnectorBindingInputSchema,
   createCredentialBindingInputSchema,
@@ -60,6 +65,8 @@ import {
   parseOrThrow,
   publishGuardrailDefinitionInputSchema,
   publishPolicyPackInputSchema,
+  recordDisclosureInputSchema,
+  recordHumanReviewInputSchema,
   registerAgentBlueprintInputSchema,
   registerConnectorDefinitionInputSchema,
   registerTenantInputSchema,
@@ -73,6 +80,7 @@ import {
   startRunSessionInputSchema,
   tenantPathSchema,
   transitionDeploymentInputSchema,
+  upsertComplianceProfileInputSchema,
 } from "./validation.js";
 
 export interface ControlPlaneApiAppOptions {
@@ -294,17 +302,6 @@ const sdkActorFor = (apiKey: ApiKeyRecord) => ({
   id: `api-key:${apiKey.id}`,
 });
 
-const mergeReportedActor = (
-  payload: Record<string, unknown> | undefined,
-  reportedActor: unknown,
-): Record<string, unknown> =>
-  reportedActor === undefined
-    ? payload ?? {}
-    : {
-        ...(payload ?? {}),
-        _reportedActor: reportedActor,
-      };
-
 const normalizeBatchActors = (
   batch: CipEventBatch,
   apiKey: ApiKeyRecord,
@@ -316,7 +313,8 @@ const normalizeBatchActors = (
     events: batch.events.map((event) => ({
       ...event,
       actor,
-      payload: mergeReportedActor(event.payload, event.actor),
+      ...(event.actor === undefined ? {} : { assertedActor: event.actor }),
+      actorVerification: "authenticated-sdk",
     })),
   };
 };
@@ -629,6 +627,79 @@ export const createControlPlaneApiApp = (
       await findSessionForTenant(options.repositories, params.sessionId, apiKey.tenantId);
       await reply.code(200).send(
         await options.controlPlane.getEvidenceBundle(params.sessionId),
+      );
+    } catch (error) {
+      await sendError(error, reply);
+    }
+  });
+
+  app.get("/v1/deployments/:deploymentId/compliance-profile", async (request, reply) => {
+    try {
+      const apiKey = await authenticateSdk(
+        options.serviceStore,
+        headerValue(request.headers.authorization),
+        "sessions:read",
+      );
+      const params = parseOrThrow(deploymentPathSchema, request.params, "deployment path");
+      const deployment = await findDeployment(options.repositories, params.deploymentId);
+      assertTenantMatch(apiKey.tenantId, deployment.tenantId);
+      await reply.code(200).send(
+        await options.controlPlane.getComplianceProfile(params.deploymentId),
+      );
+    } catch (error) {
+      await sendError(error, reply);
+    }
+  });
+
+  app.post("/v1/sessions/:sessionId(^[^:]+)::record-disclosure", async (request, reply) => {
+    try {
+      const apiKey = await authenticateSdk(
+        options.serviceStore,
+        headerValue(request.headers.authorization),
+        "sessions:write",
+      );
+      const params = parseOrThrow(sessionPathSchema, request.params, "session path");
+      await findSessionForTenant(options.repositories, params.sessionId, apiKey.tenantId);
+      const body = parseOrThrow(
+        recordDisclosureInputSchema,
+        request.body,
+        "disclosure record",
+      ) as RecordDisclosureInput;
+      if (body.sessionId !== params.sessionId) {
+        throw new Error("request session does not match the route parameter");
+      }
+      await reply.code(200).send(await options.controlPlane.recordDisclosure(body));
+    } catch (error) {
+      await sendError(error, reply);
+    }
+  });
+
+  app.post("/v1/sessions/:sessionId(^[^:]+)::record-human-review", async (request, reply) => {
+    try {
+      const claims = await authenticateOperator(
+        headerValue(request.headers.authorization),
+        options.operatorAuth,
+      );
+      const params = parseOrThrow(sessionPathSchema, request.params, "session path");
+      const session = await options.repositories.runSessions.getById(params.sessionId);
+      if (session === null) {
+        throw new Error(`unknown session ${params.sessionId}`);
+      }
+      requireOperatorScope(claims, "approvals:resolve", session.tenantId);
+      const body = parseOrThrow(
+        recordHumanReviewInputSchema,
+        request.body,
+        "human review record",
+      ) as RecordHumanReviewInput;
+      if (body.sessionId !== params.sessionId) {
+        throw new Error("request session does not match the route parameter");
+      }
+      await reply.code(200).send(
+        await options.controlPlane.recordHumanReview({
+          ...body,
+          reviewerId: claims.sub,
+          actor: { type: "human", id: claims.sub },
+        }),
       );
     } catch (error) {
       await sendError(error, reply);
@@ -1065,6 +1136,74 @@ export const createControlPlaneApiApp = (
         requireOperatorScope(claims, "deployments:read", record.tenantId);
       }
       await reply.code(200).send(record);
+    } catch (error) {
+      await sendError(error, reply);
+    }
+  });
+  app.get("/v1/admin/deployments/:deploymentId/compliance-profile", async (request, reply) => {
+    try {
+      const claims = await authenticateOperator(headerValue(request.headers.authorization), options.operatorAuth);
+      const params = parseOrThrow(deploymentPathSchema, request.params, "deployment path");
+      const deployment = await findDeployment(options.repositories, params.deploymentId);
+      requireOperatorScope(claims, "deployments:read", deployment.tenantId);
+      await reply.code(200).send(
+        await options.controlPlane.getComplianceProfile(params.deploymentId),
+      );
+    } catch (error) {
+      await sendError(error, reply);
+    }
+  });
+  app.put("/v1/admin/deployments/:deploymentId/compliance-profile", async (request, reply) => {
+    try {
+      const claims = await authenticateOperator(headerValue(request.headers.authorization), options.operatorAuth);
+      const params = parseOrThrow(deploymentPathSchema, request.params, "deployment path");
+      const deployment = await findDeployment(options.repositories, params.deploymentId);
+      requireOperatorScope(claims, "deployments:write", deployment.tenantId);
+      const body = parseOrThrow(
+        upsertComplianceProfileInputSchema,
+        request.body,
+        "compliance profile upsert",
+      ) as UpsertComplianceProfileInput;
+      if (body.deploymentId !== params.deploymentId) {
+        throw new Error("request deployment id does not match the route parameter");
+      }
+      await reply.code(200).send(
+        await options.controlPlane.upsertComplianceProfile(body),
+      );
+    } catch (error) {
+      await sendError(error, reply);
+    }
+  });
+  app.get("/v1/admin/deployments/:deploymentId/compliance-artifacts", async (request, reply) => {
+    try {
+      const claims = await authenticateOperator(headerValue(request.headers.authorization), options.operatorAuth);
+      const params = parseOrThrow(deploymentPathSchema, request.params, "deployment path");
+      const deployment = await findDeployment(options.repositories, params.deploymentId);
+      requireOperatorScope(claims, "deployments:read", deployment.tenantId);
+      await reply.code(200).send(
+        await options.controlPlane.listComplianceArtifacts(params.deploymentId),
+      );
+    } catch (error) {
+      await sendError(error, reply);
+    }
+  });
+  app.post("/v1/admin/deployments/:deploymentId/compliance-artifacts", async (request, reply) => {
+    try {
+      const claims = await authenticateOperator(headerValue(request.headers.authorization), options.operatorAuth);
+      const params = parseOrThrow(deploymentPathSchema, request.params, "deployment path");
+      const deployment = await findDeployment(options.repositories, params.deploymentId);
+      requireOperatorScope(claims, "deployments:write", deployment.tenantId);
+      const body = parseOrThrow(
+        createComplianceArtifactInputSchema,
+        request.body,
+        "compliance artifact create",
+      ) as CreateComplianceArtifactInput;
+      if (body.deploymentId !== params.deploymentId) {
+        throw new Error("request deployment id does not match the route parameter");
+      }
+      await reply.code(200).send(
+        await options.controlPlane.createComplianceArtifact(body),
+      );
     } catch (error) {
       await sendError(error, reply);
     }

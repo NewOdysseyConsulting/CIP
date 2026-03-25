@@ -316,6 +316,131 @@ test("human approval requests pause runs and rejected approvals fail the session
   assert.equal(replay.evidenceBundle?.guardrailVersions[0]?.version, "1.0.0");
 });
 
+test("compliance profiles gate high-risk activation and disclosure requirements", async () => {
+  const fixture = await createWorkdaySecurityFixture();
+
+  await fixture.controlPlane.transitionDeployment({
+    deploymentId: fixture.deployment.id,
+    targetStatus: "paused",
+  });
+
+  await fixture.controlPlane.upsertComplianceProfile({
+    deploymentId: fixture.deployment.id,
+    regime: "eu-ai-act",
+    servesEuUsers: true,
+    intendedPurpose: "Employment screening assistant",
+    riskTier: "high-risk",
+    transparency: {
+      required: true,
+      noticeText: "You are interacting with an AI assistant.",
+      placement: "banner-and-first-message",
+      requiresAcknowledgement: true,
+    },
+    oversight: {
+      required: true,
+      requireApprovalBeforeCompletion: true,
+      minimumHumanReviewers: 1,
+      stopMechanismRequired: true,
+    },
+    logging: {
+      requireVerifiedActors: true,
+      retentionDays: 180,
+    },
+  });
+
+  await assert.rejects(
+    fixture.controlPlane.transitionDeployment({
+      deploymentId: fixture.deployment.id,
+      targetStatus: "active",
+    }),
+    /missing required compliance artifact/,
+  );
+
+  for (const [kind, status] of [
+    ["technical_documentation", "approved"],
+    ["fundamental_rights_impact_assessment", "approved"],
+    ["conformity_assessment", "approved"],
+    ["eu_declaration_of_conformity", "filed"],
+    ["eu_database_registration", "filed"],
+    ["post_market_monitoring_plan", "approved"],
+  ] as const) {
+    await fixture.controlPlane.createComplianceArtifact({
+      deploymentId: fixture.deployment.id,
+      kind,
+      status,
+      owner: "legal",
+      summary: `${kind} ready`,
+    });
+  }
+
+  const reactivated = await fixture.controlPlane.transitionDeployment({
+    deploymentId: fixture.deployment.id,
+    targetStatus: "active",
+  });
+  assert.equal(reactivated.status, "active");
+
+  const session = await fixture.controlPlane.startRunSession({
+    tenantId: fixture.tenant.id,
+    deploymentId: fixture.deployment.id,
+    inputSummary: "Should we advance this candidate?",
+  });
+
+  await assert.rejects(
+    fixture.controlPlane.completeRunSession({
+      sessionId: session.id,
+      status: "completed",
+      outputSummary: "Advance candidate.",
+    }),
+    /requires disclosure before completion/,
+  );
+
+  await fixture.controlPlane.recordDisclosure({
+    sessionId: session.id,
+    disclosureVersion: "v1",
+    surface: "banner_and_first_message",
+    presentedAt: new Date().toISOString(),
+    acknowledgedAt: new Date().toISOString(),
+  });
+
+  await assert.rejects(
+    fixture.controlPlane.completeRunSession({
+      sessionId: session.id,
+      status: "completed",
+      outputSummary: "Advance candidate.",
+    }),
+    /approved human review/,
+  );
+
+  await assert.rejects(
+    fixture.controlPlane.recordHumanReview({
+      sessionId: session.id,
+      decision: "approved",
+      reviewedAt: new Date().toISOString(),
+      reviewerId: "spoofed-reviewer",
+    }),
+    /verified human reviewer actor/,
+  );
+
+  await fixture.controlPlane.recordHumanReview({
+    sessionId: session.id,
+    decision: "approved",
+    reviewedAt: new Date().toISOString(),
+    actor: { type: "human", id: "operator-1" },
+  });
+
+  const completed = await fixture.controlPlane.completeRunSession({
+    sessionId: session.id,
+    status: "completed",
+    outputSummary: "Advance candidate.",
+  });
+  const evidence = await fixture.controlPlane.getEvidenceBundle(session.id);
+
+  assert.equal(completed.status, "completed");
+  assert.equal(evidence?.disclosureRecordIds.length, 1);
+  assert.equal(evidence?.humanReviewIds.length, 1);
+  assert.equal(evidence?.complianceArtifactIds.length, 6);
+});
+
 test("policy evaluation, admin stubs, secrets, and runtime adapters behave deterministically", async () => {
   const fixture = await createWorkdaySecurityFixture();
   const evaluator = new DeterministicPolicyEvaluator();

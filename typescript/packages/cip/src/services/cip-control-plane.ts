@@ -7,14 +7,18 @@ import type {
   AuditEvent,
   BaseRecord,
   BlueprintDependencySnapshot,
+  ComplianceArtifact,
+  ComplianceProfile,
   ConnectorBinding,
   ConnectorDefinition,
   CredentialBinding,
   DeploymentRecord,
   DeploymentStatus,
+  DisclosureRecord,
   Environment,
   EvidenceBundle,
   GuardrailDefinition,
+  HumanReviewRecord,
   PolicyDomain,
   PolicyPack,
   PolicyRule,
@@ -63,6 +67,38 @@ const systemActor = (id = "cip-control-plane"): AuditActor => ({
 });
 
 const nowIso = (): string => new Date().toISOString();
+
+const defaultComplianceTransparency = (): ComplianceProfile["transparency"] => ({
+  required: false,
+  noticeText: "",
+  placement: "banner-and-first-message",
+  requiresAcknowledgement: false,
+});
+
+const defaultComplianceOversight = (): ComplianceProfile["oversight"] => ({
+  required: false,
+  requireApprovalBeforeCompletion: false,
+  minimumHumanReviewers: 0,
+  stopMechanismRequired: false,
+});
+
+const defaultComplianceLogging = (): ComplianceProfile["logging"] => ({
+  requireVerifiedActors: false,
+  retentionDays: 30,
+});
+
+const requiredHighRiskArtifactStatuses: Record<
+  ComplianceArtifact["kind"],
+  ComplianceArtifact["status"]
+> = {
+  technical_documentation: "approved",
+  fundamental_rights_impact_assessment: "approved",
+  conformity_assessment: "approved",
+  eu_declaration_of_conformity: "filed",
+  eu_database_registration: "filed",
+  post_market_monitoring_plan: "approved",
+  serious_incident_record: "not_applicable",
+};
 
 const parseSemver = (value: string): [number, number, number] => {
   const [major = "1", minor = "0", patch = "0"] = value.split(".");
@@ -235,6 +271,8 @@ export interface AppendRunEventInput {
   sessionId: string;
   type: RunEvent["type"];
   actor?: AuditActor;
+  assertedActor?: AuditActor;
+  actorVerification?: RunEvent["actorVerification"];
   payload?: Record<string, unknown>;
   traceCorrelation?: TraceCorrelation;
   occurredAt?: string;
@@ -249,8 +287,54 @@ export interface AppendAuditEventInput {
   action: string;
   severity?: AuditEvent["severity"];
   actor: AuditActor;
+  assertedActor?: AuditActor;
+  actorVerification?: AuditEvent["actorVerification"];
   payload: Record<string, unknown>;
   occurredAt?: string;
+}
+
+export interface UpsertComplianceProfileInput {
+  id?: string;
+  deploymentId: string;
+  regime: ComplianceProfile["regime"];
+  servesEuUsers: boolean;
+  intendedPurpose: string;
+  riskTier: ComplianceProfile["riskTier"];
+  highRiskBasis?: ComplianceProfile["highRiskBasis"];
+  transparency?: Partial<ComplianceProfile["transparency"]>;
+  oversight?: Partial<ComplianceProfile["oversight"]>;
+  logging?: Partial<ComplianceProfile["logging"]>;
+}
+
+export interface CreateComplianceArtifactInput {
+  id?: string;
+  deploymentId: string;
+  kind: ComplianceArtifact["kind"];
+  status: ComplianceArtifact["status"];
+  owner: string;
+  summary: string;
+  externalRef?: string;
+  dueAt?: string;
+  completedAt?: string;
+}
+
+export interface RecordDisclosureInput {
+  id?: string;
+  sessionId: string;
+  disclosureVersion: string;
+  surface: DisclosureRecord["surface"];
+  presentedAt: string;
+  acknowledgedAt?: string;
+}
+
+export interface RecordHumanReviewInput {
+  id?: string;
+  sessionId: string;
+  reviewerId?: string;
+  decision: HumanReviewRecord["decision"];
+  comment?: string;
+  reviewedAt: string;
+  actor?: AuditActor;
 }
 
 export interface RequestHumanApprovalInput {
@@ -267,6 +351,10 @@ export interface ReplayedRunSession {
   session: RunSession;
   runEvents: RunEvent[];
   approvalRequests: ApprovalRequest[];
+  disclosureRecords: DisclosureRecord[];
+  humanReviews: HumanReviewRecord[];
+  complianceProfile: ComplianceProfile | null;
+  complianceArtifactIds: string[];
   evidenceBundle: EvidenceBundle | null;
   reconstructedStatus: RunSessionStatus;
 }
@@ -690,6 +778,10 @@ export class CipControlPlane {
       );
     }
 
+    if (input.targetStatus === "active") {
+      await this.ensureDeploymentComplianceReady(deployment.id);
+    }
+
     const updated: DeploymentRecord = {
       ...touchRecord(deployment),
       status: input.targetStatus,
@@ -703,6 +795,7 @@ export class CipControlPlane {
       category: "deployment",
       action: "deployment.transitioned",
       actor: input.actor ?? systemActor(),
+      actorVerification: "system",
       payload: {
         from: deployment.status,
         to: input.targetStatus,
@@ -711,6 +804,113 @@ export class CipControlPlane {
     });
 
     return updated;
+  }
+
+  async getComplianceProfile(
+    deploymentId: string,
+  ): Promise<ComplianceProfile | null> {
+    const deployment = await this.ensureDeploymentExists(deploymentId);
+    const [profile] = await this.repositories.complianceProfiles.list({
+      deploymentId: deployment.id,
+    });
+    return profile ?? null;
+  }
+
+  async upsertComplianceProfile(
+    input: UpsertComplianceProfileInput,
+  ): Promise<ComplianceProfile> {
+    const deployment = await this.ensureDeploymentExists(input.deploymentId);
+    const [existing] = await this.repositories.complianceProfiles.list({
+      deploymentId: deployment.id,
+    });
+    const metadata =
+      existing === undefined ? buildRecordMetadata(input.id) : touchRecord(existing);
+    const transparencyDefaults = defaultComplianceTransparency();
+    const oversightDefaults = defaultComplianceOversight();
+    const loggingDefaults = defaultComplianceLogging();
+    const profile: ComplianceProfile = {
+      ...metadata,
+      tenantId: deployment.tenantId,
+      deploymentId: deployment.id,
+      regime: input.regime,
+      servesEuUsers: input.servesEuUsers,
+      intendedPurpose: input.intendedPurpose,
+      riskTier: input.riskTier,
+      ...(input.highRiskBasis === undefined
+        ? {}
+        : { highRiskBasis: input.highRiskBasis }),
+      transparency: {
+        ...(existing?.transparency ?? transparencyDefaults),
+        ...(input.transparency ?? {}),
+      },
+      oversight: {
+        ...(existing?.oversight ?? oversightDefaults),
+        ...(input.oversight ?? {}),
+      },
+      logging: {
+        ...(existing?.logging ?? loggingDefaults),
+        ...(input.logging ?? {}),
+      },
+    };
+
+    await this.repositories.complianceProfiles.save(profile);
+    await this.recordAuditEvent({
+      tenantId: deployment.tenantId,
+      deploymentId: deployment.id,
+      category: "deployment",
+      action: "compliance_profile.upserted",
+      actor: systemActor(),
+      actorVerification: "system",
+      payload: {
+        complianceProfileId: profile.id,
+        regime: profile.regime,
+        riskTier: profile.riskTier,
+      },
+    });
+    return profile;
+  }
+
+  async listComplianceArtifacts(
+    deploymentId: string,
+  ): Promise<ComplianceArtifact[]> {
+    const deployment = await this.ensureDeploymentExists(deploymentId);
+    return this.repositories.complianceArtifacts.list({
+      deploymentId: deployment.id,
+    });
+  }
+
+  async createComplianceArtifact(
+    input: CreateComplianceArtifactInput,
+  ): Promise<ComplianceArtifact> {
+    const deployment = await this.ensureDeploymentExists(input.deploymentId);
+    const artifact: ComplianceArtifact = {
+      ...buildRecordMetadata(input.id),
+      tenantId: deployment.tenantId,
+      deploymentId: deployment.id,
+      kind: input.kind,
+      status: input.status,
+      owner: input.owner,
+      summary: input.summary,
+      ...(input.externalRef === undefined ? {} : { externalRef: input.externalRef }),
+      ...(input.dueAt === undefined ? {} : { dueAt: input.dueAt }),
+      ...(input.completedAt === undefined ? {} : { completedAt: input.completedAt }),
+    };
+
+    await this.repositories.complianceArtifacts.save(artifact);
+    await this.recordAuditEvent({
+      tenantId: deployment.tenantId,
+      deploymentId: deployment.id,
+      category: "deployment",
+      action: "compliance_artifact.created",
+      actor: systemActor(),
+      actorVerification: "system",
+      payload: {
+        complianceArtifactId: artifact.id,
+        kind: artifact.kind,
+        status: artifact.status,
+      },
+    });
+    return artifact;
   }
 
   async rollbackDeploymentToBlueprint(
@@ -733,6 +933,7 @@ export class CipControlPlane {
       category: "deployment",
       action: "deployment.blueprint.rollback",
       actor: input.actor ?? systemActor(),
+      actorVerification: "system",
       payload: {
         targetBlueprintId: blueprint.id,
         targetBlueprintVersion: blueprint.version,
@@ -759,6 +960,8 @@ export class CipControlPlane {
       );
     }
 
+    const complianceProfile = await this.getComplianceProfile(input.deploymentId);
+
     const session: RunSession = {
       ...buildRecordMetadata(input.id),
       tenantId: input.tenantId,
@@ -767,6 +970,7 @@ export class CipControlPlane {
       status: "running",
       startedAt: nowIso(),
       inputSummary: input.inputSummary,
+      complianceProfileSnapshot: complianceProfile,
       ...(input.traceCorrelation === undefined
         ? {}
         : { traceCorrelation: input.traceCorrelation }),
@@ -777,6 +981,7 @@ export class CipControlPlane {
       sessionId: session.id,
       type: "run_started",
       actor: { type: "agent", id: "cip-runtime" },
+      actorVerification: "system",
       payload: {
         correlationId: session.correlationId,
         inputSummary: session.inputSummary,
@@ -792,9 +997,11 @@ export class CipControlPlane {
       category: "session",
       action: "session.started",
       actor: { type: "agent", id: "cip-runtime" },
+      actorVerification: "system",
       payload: {
         deploymentId: deployment.id,
         correlationId: session.correlationId,
+        complianceProfileId: complianceProfile?.id ?? null,
       },
     });
 
@@ -806,6 +1013,9 @@ export class CipControlPlane {
     if (session.status === "completed" || session.status === "failed") {
       throw new CipControlPlaneError(`session ${session.id} is already terminal`);
     }
+
+    await this.ensureSessionCompletionRequirements(session);
+
     const { currentApprovalRequestId: _ignoredApprovalRequestId, ...sessionWithoutApproval } =
       touchRecord(session);
     const updatedSession: RunSession = {
@@ -822,6 +1032,7 @@ export class CipControlPlane {
       sessionId: session.id,
       type: input.status === "completed" ? "run_completed" : "run_failed",
       actor: { type: "agent", id: "cip-runtime" },
+      actorVerification: "system",
       payload: { outputSummary: input.outputSummary ?? null },
       ...(session.traceCorrelation === undefined
         ? {}
@@ -834,12 +1045,140 @@ export class CipControlPlane {
       category: "session",
       action: "session.completed",
       actor: { type: "agent", id: "cip-runtime" },
+      actorVerification: "system",
       payload: { status: updatedSession.status },
     });
 
     await this.persistEvidenceBundle(updatedSession);
 
     return updatedSession;
+  }
+
+  async recordDisclosure(input: RecordDisclosureInput): Promise<DisclosureRecord> {
+    const session = await this.ensureRunSessionExists(input.sessionId);
+    const disclosure: DisclosureRecord = {
+      ...buildRecordMetadata(input.id),
+      tenantId: session.tenantId,
+      deploymentId: session.deploymentId,
+      sessionId: session.id,
+      disclosureVersion: input.disclosureVersion,
+      surface: input.surface,
+      presentedAt: input.presentedAt,
+      ...(input.acknowledgedAt === undefined
+        ? {}
+        : { acknowledgedAt: input.acknowledgedAt }),
+    };
+
+    await this.repositories.disclosureRecords.save(disclosure);
+    await this.appendRunEvent({
+      sessionId: session.id,
+      type: "disclosure_presented",
+      actor: { type: "system", id: "cip-control-plane" },
+      actorVerification: "system",
+      payload: {
+        disclosureRecordId: disclosure.id,
+        disclosureVersion: disclosure.disclosureVersion,
+        surface: disclosure.surface,
+      },
+      occurredAt: disclosure.presentedAt,
+      ...(session.traceCorrelation === undefined
+        ? {}
+        : { traceCorrelation: session.traceCorrelation }),
+    });
+    if (disclosure.acknowledgedAt !== undefined) {
+      await this.appendRunEvent({
+        sessionId: session.id,
+        type: "disclosure_acknowledged",
+        actor: { type: "system", id: "cip-control-plane" },
+        actorVerification: "system",
+        payload: {
+          disclosureRecordId: disclosure.id,
+          disclosureVersion: disclosure.disclosureVersion,
+        },
+        occurredAt: disclosure.acknowledgedAt,
+        ...(session.traceCorrelation === undefined
+          ? {}
+          : { traceCorrelation: session.traceCorrelation }),
+      });
+    }
+    await this.recordAuditEvent({
+      tenantId: session.tenantId,
+      deploymentId: session.deploymentId,
+      sessionId: session.id,
+      category: "session",
+      action: "disclosure.recorded",
+      actor: systemActor(),
+      actorVerification: "system",
+      payload: {
+        disclosureRecordId: disclosure.id,
+        disclosureVersion: disclosure.disclosureVersion,
+        acknowledged: disclosure.acknowledgedAt !== undefined,
+      },
+      occurredAt: disclosure.presentedAt,
+    });
+    return disclosure;
+  }
+
+  async recordHumanReview(
+    input: RecordHumanReviewInput,
+  ): Promise<HumanReviewRecord> {
+    const session = await this.ensureRunSessionExists(input.sessionId);
+    if (
+      session.complianceProfileSnapshot?.logging.requireVerifiedActors === true &&
+      input.actor === undefined
+    ) {
+      throw new CipControlPlaneError(
+        `session ${session.id} requires a verified human reviewer actor`,
+      );
+    }
+    const reviewer = input.actor ?? {
+      type: "human",
+      id: input.reviewerId ?? "reviewer",
+    };
+    const review: HumanReviewRecord = {
+      ...buildRecordMetadata(input.id),
+      tenantId: session.tenantId,
+      deploymentId: session.deploymentId,
+      sessionId: session.id,
+      reviewer,
+      decision: input.decision,
+      ...(input.comment === undefined ? {} : { comment: input.comment }),
+      reviewedAt: input.reviewedAt,
+    };
+
+    await this.repositories.humanReviewRecords.save(review);
+    await this.appendRunEvent({
+      sessionId: session.id,
+      type: "human_review_completed",
+      actor: reviewer,
+      actorVerification:
+        input.actor === undefined ? "asserted" : "authenticated-operator",
+      payload: {
+        humanReviewId: review.id,
+        decision: review.decision,
+        comment: review.comment ?? null,
+      },
+      occurredAt: review.reviewedAt,
+      ...(session.traceCorrelation === undefined
+        ? {}
+        : { traceCorrelation: session.traceCorrelation }),
+    });
+    await this.recordAuditEvent({
+      tenantId: session.tenantId,
+      deploymentId: session.deploymentId,
+      sessionId: session.id,
+      category: "approval",
+      action: "human_review.recorded",
+      actor: reviewer,
+      actorVerification:
+        input.actor === undefined ? "asserted" : "authenticated-operator",
+      payload: {
+        humanReviewId: review.id,
+        decision: review.decision,
+      },
+      occurredAt: review.reviewedAt,
+    });
+    return review;
   }
 
   async appendRunEvent(input: AppendRunEventInput): Promise<RunEvent> {
@@ -862,6 +1201,10 @@ export class CipControlPlane {
       sequence: priorEvents.length + 1,
       occurredAt: input.occurredAt ?? nowIso(),
       actor: input.actor ?? { type: "agent", id: "cip-runtime" },
+      ...(input.assertedActor === undefined
+        ? {}
+        : { assertedActor: input.assertedActor }),
+      actorVerification: input.actorVerification ?? "asserted",
       payload: input.payload ?? {},
       ...(input.traceCorrelation === undefined
         ? {}
@@ -899,6 +1242,10 @@ export class CipControlPlane {
       category: input.category,
       action: input.action,
       actor: input.actor,
+      ...(input.assertedActor === undefined
+        ? {}
+        : { assertedActor: input.assertedActor }),
+      actorVerification: input.actorVerification ?? "asserted",
       payload: input.payload,
       ...(input.severity === undefined ? {} : { severity: input.severity }),
       ...(input.occurredAt === undefined
@@ -956,6 +1303,7 @@ export class CipControlPlane {
       sessionId: session.id,
       type: "approval_requested",
       actor: approvalRequest.requestedBy,
+      actorVerification: "authenticated-sdk",
       payload: {
         approvalRequestId: approvalRequest.id,
         checkpointId: approvalRequest.checkpointId,
@@ -972,6 +1320,7 @@ export class CipControlPlane {
       category: "approval",
       action: "approval.requested",
       actor: approvalRequest.requestedBy,
+      actorVerification: "authenticated-sdk",
       payload: {
         approvalRequestId: approvalRequest.id,
         checkpointId: approvalRequest.checkpointId,
@@ -1022,6 +1371,7 @@ export class CipControlPlane {
       sessionId: session.id,
       type: "approval_resolved",
       actor: input.actor ?? { type: "human", id: "operator" },
+      actorVerification: "authenticated-operator",
       payload: {
         approvalRequestId: resolved.id,
         decision: resolved.status,
@@ -1037,6 +1387,7 @@ export class CipControlPlane {
         sessionId: session.id,
         type: "run_failed",
         actor: input.actor ?? { type: "human", id: "operator" },
+        actorVerification: "authenticated-operator",
         payload: {
           approvalRequestId: resolved.id,
           decision: resolved.status,
@@ -1055,6 +1406,7 @@ export class CipControlPlane {
       category: "approval",
       action: "approval.resolved",
       actor: input.actor ?? { type: "human", id: "operator" },
+      actorVerification: "authenticated-operator",
       payload: {
         approvalRequestId: resolved.id,
         decision: resolved.status,
@@ -1071,6 +1423,16 @@ export class CipControlPlane {
     });
     const approvalRequests = await this.repositories.approvalRequests.list({
       sessionId,
+    });
+    const disclosureRecords = await this.repositories.disclosureRecords.list({
+      sessionId,
+    });
+    const humanReviews = await this.repositories.humanReviewRecords.list({
+      sessionId,
+    });
+    const complianceProfile = await this.getComplianceProfile(session.deploymentId);
+    const complianceArtifacts = await this.repositories.complianceArtifacts.list({
+      deploymentId: session.deploymentId,
     });
     const [evidenceBundle] = await this.repositories.evidenceBundles.list({
       sessionId,
@@ -1104,6 +1466,10 @@ export class CipControlPlane {
       session,
       runEvents,
       approvalRequests,
+      disclosureRecords,
+      humanReviews,
+      complianceProfile,
+      complianceArtifactIds: complianceArtifacts.map((artifact) => artifact.id),
       evidenceBundle: evidenceBundle ?? null,
       reconstructedStatus,
     };
@@ -1118,6 +1484,8 @@ export class CipControlPlane {
     action: string;
     severity?: AuditEvent["severity"];
     actor: AuditActor;
+    assertedActor?: AuditActor;
+    actorVerification?: AuditEvent["actorVerification"];
     payload: Record<string, unknown>;
     occurredAt?: string;
   }): Promise<AuditEvent> {
@@ -1133,6 +1501,10 @@ export class CipControlPlane {
       severity: input.severity ?? "info",
       occurredAt: input.occurredAt ?? nowIso(),
       actor: input.actor,
+      ...(input.assertedActor === undefined
+        ? {}
+        : { assertedActor: input.assertedActor }),
+      actorVerification: input.actorVerification ?? "asserted",
       payload: input.payload,
     };
 
@@ -1280,6 +1652,77 @@ export class CipControlPlane {
     return approvalRequest;
   }
 
+  private async ensureDeploymentComplianceReady(
+    deploymentId: string,
+  ): Promise<void> {
+    const profile = await this.getComplianceProfile(deploymentId);
+    if (profile === null || profile.riskTier !== "high-risk") {
+      return;
+    }
+
+    const artifacts = await this.repositories.complianceArtifacts.list({
+      deploymentId,
+    });
+
+    for (const [kind, requiredStatus] of Object.entries(
+      requiredHighRiskArtifactStatuses,
+    ) as Array<[ComplianceArtifact["kind"], ComplianceArtifact["status"]]>) {
+      if (kind === "serious_incident_record") {
+        continue;
+      }
+      const matches = artifacts.some(
+        (artifact) => artifact.kind === kind && artifact.status === requiredStatus,
+      );
+      if (!matches) {
+        throw new CipControlPlaneError(
+          `deployment ${deploymentId} is missing required compliance artifact ${kind}:${requiredStatus}`,
+        );
+      }
+    }
+  }
+
+  private async ensureSessionCompletionRequirements(
+    session: RunSession,
+  ): Promise<void> {
+    const profile = session.complianceProfileSnapshot;
+    if (profile === undefined || profile === null) {
+      return;
+    }
+
+    if (profile.transparency.required) {
+      const disclosures = await this.repositories.disclosureRecords.list({
+        sessionId: session.id,
+      });
+      if (disclosures.length === 0) {
+        throw new CipControlPlaneError(
+          `session ${session.id} requires disclosure before completion`,
+        );
+      }
+      if (profile.transparency.requiresAcknowledgement) {
+        const acknowledged = disclosures.some(
+          (record) => record.acknowledgedAt !== undefined,
+        );
+        if (!acknowledged) {
+          throw new CipControlPlaneError(
+            `session ${session.id} requires disclosure acknowledgement before completion`,
+          );
+        }
+      }
+    }
+
+    if (profile.oversight.requireApprovalBeforeCompletion) {
+      const reviews = await this.repositories.humanReviewRecords.list({
+        sessionId: session.id,
+        decision: "approved",
+      });
+      if (reviews.length < profile.oversight.minimumHumanReviewers) {
+        throw new CipControlPlaneError(
+          `session ${session.id} requires ${profile.oversight.minimumHumanReviewers} approved human review(s) before completion`,
+        );
+      }
+    }
+  }
+
   private async persistEvidenceBundle(session: RunSession): Promise<EvidenceBundle> {
     const deployment = await this.ensureDeploymentExists(session.deploymentId);
     const blueprint = await this.ensureAgentBlueprintExists(deployment.agentBlueprintId);
@@ -1288,6 +1731,15 @@ export class CipControlPlane {
     });
     const auditEvents = await this.repositories.auditEvents.list({
       sessionId: session.id,
+    });
+    const disclosureRecords = await this.repositories.disclosureRecords.list({
+      sessionId: session.id,
+    });
+    const humanReviews = await this.repositories.humanReviewRecords.list({
+      sessionId: session.id,
+    });
+    const complianceArtifacts = await this.repositories.complianceArtifacts.list({
+      deploymentId: session.deploymentId,
     });
     const [existing] = await this.repositories.evidenceBundles.list({
       sessionId: session.id,
@@ -1307,6 +1759,10 @@ export class CipControlPlane {
         `Evidence bundle for ${blueprint.key}@${blueprint.version}`,
       runEventIds: runEvents.map((event) => event.id),
       auditEventIds: auditEvents.map((event) => event.id),
+      complianceProfile: session.complianceProfileSnapshot ?? null,
+      disclosureRecordIds: disclosureRecords.map((record) => record.id),
+      humanReviewIds: humanReviews.map((review) => review.id),
+      complianceArtifactIds: complianceArtifacts.map((artifact) => artifact.id),
       generatedAt: nowIso(),
     };
 

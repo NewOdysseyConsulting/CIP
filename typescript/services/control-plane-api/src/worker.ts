@@ -26,6 +26,12 @@ const processBatch = async (
         sessionId: batch.sessionId,
         type: event.type,
         ...(event.actor === undefined ? {} : { actor: event.actor }),
+        ...(event.assertedActor === undefined
+          ? {}
+          : { assertedActor: event.assertedActor }),
+        ...(event.actorVerification === undefined
+          ? {}
+          : { actorVerification: event.actorVerification }),
         ...(event.payload === undefined ? {} : { payload: event.payload }),
         ...(event.traceCorrelation === undefined
           ? {}
@@ -44,6 +50,12 @@ const processBatch = async (
       category: event.category,
       action: event.action,
       actor: event.actor,
+      ...(event.assertedActor === undefined
+        ? {}
+        : { assertedActor: event.assertedActor }),
+      ...(event.actorVerification === undefined
+        ? {}
+        : { actorVerification: event.actorVerification }),
       payload: event.payload,
       ...(event.deploymentId === undefined
         ? {}

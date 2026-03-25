@@ -2,6 +2,7 @@ README.md
 pyproject.toml
 src/new_odyssey_cip/__init__.py
 src/new_odyssey_cip/admin_api.py
+src/new_odyssey_cip/client.py
 src/new_odyssey_cip/connectors.py
 src/new_odyssey_cip/control_plane.py
 src/new_odyssey_cip/guardrails.py
@@ -19,4 +20,5 @@ src/new_odyssey_cip.egg-info/SOURCES.txt
 src/new_odyssey_cip.egg-info/dependency_links.txt
 src/new_odyssey_cip.egg-info/requires.txt
 src/new_odyssey_cip.egg-info/top_level.txt
+tests/test_client.py
 tests/test_control_plane.py

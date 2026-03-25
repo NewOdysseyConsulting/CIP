@@ -287,6 +287,8 @@ test("control-plane API supports remote tracked sessions and queued event ingest
     runEvents: Array<{
       type: string;
       actor: { id: string; type: string };
+      assertedActor?: { id: string; type: string };
+      actorVerification: string;
       payload: Record<string, unknown>;
     }>;
     reconstructedStatus: string;
@@ -296,10 +298,11 @@ test("control-plane API supports remote tracked sessions and queued event ingest
     ["run_started", "tool_called", "run_completed"],
   );
   assert.equal(replay.runEvents[1]?.actor.id, `api-key:${fixture.apiKeyRecord.id}`);
-  assert.deepEqual(replay.runEvents[1]?.payload._reportedActor, {
+  assert.deepEqual(replay.runEvents[1]?.assertedActor, {
     type: "human",
     id: "spoofed-operator",
   });
+  assert.equal(replay.runEvents[1]?.actorVerification, "authenticated-sdk");
   assert.equal(replay.reconstructedStatus, "completed");
 
   const evidenceResponse = await fixture.app.inject({
@@ -312,6 +315,114 @@ test("control-plane API supports remote tracked sessions and queued event ingest
   assert.equal(evidenceResponse.statusCode, 200);
   const evidence = parseJson<{ agentBlueprintVersion: string }>(evidenceResponse.body);
   assert.equal(evidence.agentBlueprintVersion, "1.0.0");
+
+  await fixture.app.close();
+});
+
+test("compliance profile and disclosure routes enforce completion requirements", async () => {
+  const fixture = await buildFixture();
+
+  const profileResponse = await fixture.app.inject({
+    method: "PUT",
+    url: `/v1/admin/deployments/${fixture.deployment.id}/compliance-profile`,
+    headers: {
+      authorization: `Bearer ${fixture.operatorToken}`,
+    },
+    payload: {
+      deploymentId: fixture.deployment.id,
+      regime: "eu-ai-act",
+      servesEuUsers: true,
+      intendedPurpose: "Customer support chatbot",
+      riskTier: "limited",
+      transparency: {
+        required: true,
+        noticeText: "You are interacting with an AI assistant.",
+        placement: "banner-and-first-message",
+        requiresAcknowledgement: false,
+      },
+      oversight: {
+        required: false,
+        requireApprovalBeforeCompletion: false,
+        minimumHumanReviewers: 0,
+        stopMechanismRequired: false,
+      },
+      logging: {
+        requireVerifiedActors: true,
+        retentionDays: 90,
+      },
+    },
+  });
+  assert.equal(profileResponse.statusCode, 200);
+
+  const createResponse = await fixture.app.inject({
+    method: "POST",
+    url: "/v1/sessions",
+    headers: {
+      authorization: `Bearer ${fixture.apiKey}`,
+      "Idempotency-Key": "session-create-compliance-1",
+    },
+    payload: {
+      tenantId: fixture.tenant.id,
+      deploymentId: fixture.deployment.id,
+      inputSummary: "Help me reset my password.",
+    },
+  });
+  assert.equal(createResponse.statusCode, 200);
+  const session = parseJson<{ id: string }>(createResponse.body);
+
+  const preDisclosureComplete = await fixture.app.inject({
+    method: "POST",
+    url: `/v1/sessions/${session.id}:complete`,
+    headers: {
+      authorization: `Bearer ${fixture.apiKey}`,
+      "Idempotency-Key": "session-complete-compliance-1",
+    },
+    payload: {
+      sessionId: session.id,
+      status: "completed",
+      outputSummary: "Reset your password from the profile page.",
+    },
+  });
+  assert.equal(preDisclosureComplete.statusCode, 400);
+
+  const runtimeProfileResponse = await fixture.app.inject({
+    method: "GET",
+    url: `/v1/deployments/${fixture.deployment.id}/compliance-profile`,
+    headers: {
+      authorization: `Bearer ${fixture.apiKey}`,
+    },
+  });
+  assert.equal(runtimeProfileResponse.statusCode, 200);
+
+  const disclosureResponse = await fixture.app.inject({
+    method: "POST",
+    url: `/v1/sessions/${session.id}:record-disclosure`,
+    headers: {
+      authorization: `Bearer ${fixture.apiKey}`,
+    },
+    payload: {
+      sessionId: session.id,
+      disclosureVersion: "v1",
+      surface: "banner_and_first_message",
+      presentedAt: new Date().toISOString(),
+    },
+  });
+  assert.equal(disclosureResponse.statusCode, 200);
+
+  const completeResponse = await fixture.app.inject({
+    method: "POST",
+    url: `/v1/sessions/${session.id}:complete`,
+    headers: {
+      authorization: `Bearer ${fixture.apiKey}`,
+      "Idempotency-Key": "session-complete-compliance-2",
+    },
+    payload: {
+      sessionId: session.id,
+      status: "completed",
+      outputSummary: "Reset your password from the profile page.",
+    },
+  });
+  assert.equal(completeResponse.statusCode, 200);
 
   await fixture.app.close();
 });
@@ -816,6 +927,9 @@ test("published OpenAPI spec covers the hosted runtime and admin routes", async 
   const requiredPaths = [
     "/metrics",
     "/v1/ingest-jobs/{jobId}",
+    "/v1/deployments/{deploymentId}/compliance-profile",
+    "/v1/sessions/{sessionId}:record-disclosure",
+    "/v1/sessions/{sessionId}:record-human-review",
     "/v1/admin/tenants",
     "/v1/admin/connector-definitions",
     "/v1/admin/credential-bindings",
@@ -824,6 +938,8 @@ test("published OpenAPI spec covers the hosted runtime and admin routes", async 
     "/v1/admin/guardrail-definitions",
     "/v1/admin/agent-blueprints",
     "/v1/admin/deployments",
+    "/v1/admin/deployments/{deploymentId}/compliance-profile",
+    "/v1/admin/deployments/{deploymentId}/compliance-artifacts",
     "/v1/admin/api-keys",
     "/v1/admin/dead-letter-jobs",
     "/v1/admin/retention/cleanup",

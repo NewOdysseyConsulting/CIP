@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -13,15 +13,23 @@ from .records import (
     AuditEvent,
     BaseRecord,
     BlueprintDependencySnapshot,
+    ComplianceArtifact,
+    ComplianceLogging,
+    ComplianceOversight,
+    ComplianceProfile,
+    ComplianceTransparency,
     ConnectorBinding,
     ConnectorDefinition,
     CredentialBinding,
     DependencyVersionReference,
     DeploymentRecord,
     DeploymentStatus,
+    DisclosureRecord,
     Environment,
     EvidenceBundle,
     GuardrailDefinition,
+    HighRiskBasis,
+    HumanReviewRecord,
     PolicyDomain,
     PolicyPack,
     PolicyRule,
@@ -75,6 +83,28 @@ def _record_kwargs(record: BaseRecord) -> dict[str, Any]:
 
 def _system_actor(actor_id: str = "cip-control-plane") -> AuditActor:
     return AuditActor(type="system", id=actor_id)
+
+
+def _default_compliance_transparency() -> ComplianceTransparency:
+    return ComplianceTransparency(
+        required=False,
+        notice_text="",
+        placement="banner-and-first-message",
+        requires_acknowledgement=False,
+    )
+
+
+def _default_compliance_oversight() -> ComplianceOversight:
+    return ComplianceOversight(
+        required=False,
+        require_approval_before_completion=False,
+        minimum_human_reviewers=0,
+        stop_mechanism_required=False,
+    )
+
+
+def _default_compliance_logging() -> ComplianceLogging:
+    return ComplianceLogging(require_verified_actors=False, retention_days=30)
 
 
 def _parse_semver(value: str) -> tuple[int, int, int]:
@@ -256,6 +286,8 @@ class AppendRunEventInput:
     session_id: str
     type: str
     actor: AuditActor | None = None
+    asserted_actor: AuditActor | None = None
+    actor_verification: str | None = None
     payload: dict[str, Any] | None = None
     trace_correlation: TraceCorrelation | None = None
     occurred_at: str | None = None
@@ -268,10 +300,60 @@ class AppendAuditEventInput:
     action: str
     actor: AuditActor
     payload: dict[str, Any]
+    asserted_actor: AuditActor | None = None
+    actor_verification: str | None = None
     deployment_id: str | None = None
     session_id: str | None = None
     severity: str = "info"
     occurred_at: str | None = None
+
+
+@dataclass(slots=True)
+class UpsertComplianceProfileInput:
+    deployment_id: str
+    regime: str
+    serves_eu_users: bool
+    intended_purpose: str
+    risk_tier: str
+    record_id: str | None = None
+    high_risk_basis: Any | None = None
+    transparency: dict[str, Any] | None = None
+    oversight: dict[str, Any] | None = None
+    logging: dict[str, Any] | None = None
+
+
+@dataclass(slots=True)
+class CreateComplianceArtifactInput:
+    deployment_id: str
+    kind: str
+    status: str
+    owner: str
+    summary: str
+    record_id: str | None = None
+    external_ref: str | None = None
+    due_at: str | None = None
+    completed_at: str | None = None
+
+
+@dataclass(slots=True)
+class RecordDisclosureInput:
+    session_id: str
+    disclosure_version: str
+    surface: str
+    presented_at: str
+    record_id: str | None = None
+    acknowledged_at: str | None = None
+
+
+@dataclass(slots=True)
+class RecordHumanReviewInput:
+    session_id: str
+    decision: str
+    reviewed_at: str
+    record_id: str | None = None
+    reviewer_id: str | None = None
+    comment: str | None = None
+    actor: AuditActor | None = None
 
 
 @dataclass(slots=True)
@@ -294,6 +376,10 @@ class ReplayedRunSession:
     session: RunSession
     run_events: list[RunEvent]
     approval_requests: list[ApprovalRequest]
+    disclosure_records: list[DisclosureRecord]
+    human_reviews: list[HumanReviewRecord]
+    compliance_profile: ComplianceProfile | None
+    compliance_artifact_ids: list[str]
     evidence_bundle: EvidenceBundle | None
     reconstructed_status: RunSessionStatus
 
@@ -324,6 +410,7 @@ class CipControlPlane:
             category="tenant",
             action="tenant.registered",
             actor=_system_actor(),
+            actor_verification="system",
             payload={"slug": tenant.slug, "product_tier": tenant.product_tier},
         )
         return tenant
@@ -375,6 +462,7 @@ class CipControlPlane:
             category="security",
             action="credential.bound",
             actor=_system_actor(),
+            actor_verification="system",
             payload={"provider": input_data.provider, "credential_binding_id": credential_binding.id},
         )
         return credential_binding
@@ -407,6 +495,7 @@ class CipControlPlane:
             category="connector",
             action="connector.bound",
             actor=_system_actor(),
+            actor_verification="system",
             payload={
                 "connector_binding_id": connector_binding.id,
                 "connector_definition_key": connector_definition.key,
@@ -440,6 +529,7 @@ class CipControlPlane:
             category="policy",
             action="policy_pack.published",
             actor=_system_actor(),
+            actor_verification="system",
             payload={"policy_pack_id": policy_pack.id, "key": policy_pack.key, "version": policy_pack.version},
         )
         return policy_pack
@@ -466,6 +556,7 @@ class CipControlPlane:
             category="policy",
             action="guardrail_definition.published",
             actor=_system_actor(),
+            actor_verification="system",
             payload={"guardrail_definition_id": guardrail_definition.id, "key": guardrail_definition.key, "version": guardrail_definition.version},
         )
         return guardrail_definition
@@ -525,6 +616,7 @@ class CipControlPlane:
             category="deployment",
             action="agent_blueprint.released",
             actor=_system_actor(),
+            actor_verification="system",
             payload={"agent_blueprint_id": blueprint.id, "key": blueprint.key, "version": blueprint.version, "release_state": blueprint.release_state},
         )
         return blueprint
@@ -572,6 +664,7 @@ class CipControlPlane:
             category="deployment",
             action="deployment.created",
             actor=_system_actor(),
+            actor_verification="system",
             payload={"agent_blueprint_id": deployment.agent_blueprint_id, "agent_blueprint_version": deployment.agent_blueprint_version, "environment": deployment.environment, "status": deployment.status},
         )
         return deployment
@@ -581,6 +674,8 @@ class CipControlPlane:
         allowed = ALLOWED_DEPLOYMENT_TRANSITIONS[deployment.status]
         if input_data.target_status not in allowed:
             raise CipControlPlaneError(f"invalid deployment transition: {deployment.status} -> {input_data.target_status}")
+        if input_data.target_status == "active":
+            self._ensure_deployment_compliance_ready(deployment.id)
         metadata = _touch_record(deployment)
         updated = DeploymentRecord(
             **_record_kwargs(metadata),
@@ -602,6 +697,7 @@ class CipControlPlane:
             category="deployment",
             action="deployment.transitioned",
             actor=input_data.actor or _system_actor(),
+            actor_verification="system",
             payload={"from": deployment.status, "to": input_data.target_status, "reason": input_data.reason},
         )
         return updated
@@ -630,9 +726,107 @@ class CipControlPlane:
             category="deployment",
             action="deployment.blueprint.rollback",
             actor=input_data.actor or _system_actor(),
+            actor_verification="system",
             payload={"target_blueprint_id": blueprint.id, "target_blueprint_version": blueprint.version, "reason": input_data.reason},
         )
         return updated
+
+    def get_compliance_profile(self, deployment_id: str) -> ComplianceProfile | None:
+        self._ensure_deployment_exists(deployment_id)
+        return next(
+            (
+                profile
+                for profile in self.repositories.compliance_profiles.list()
+                if profile.deployment_id == deployment_id
+            ),
+            None,
+        )
+
+    def upsert_compliance_profile(
+        self,
+        input_data: UpsertComplianceProfileInput,
+    ) -> ComplianceProfile:
+        deployment = self._ensure_deployment_exists(input_data.deployment_id)
+        existing = self.get_compliance_profile(deployment.id)
+        metadata = (
+            _build_record_metadata(input_data.record_id)
+            if existing is None
+            else _touch_record(existing)
+        )
+        transparency_data = {
+            **(
+                asdict(_default_compliance_transparency())
+                if existing is None
+                else asdict(existing.transparency)
+            ),
+            **(input_data.transparency or {}),
+        }
+        oversight_data = {
+            **(
+                asdict(_default_compliance_oversight())
+                if existing is None
+                else asdict(existing.oversight)
+            ),
+            **(input_data.oversight or {}),
+        }
+        logging_data = {
+            **(
+                asdict(_default_compliance_logging())
+                if existing is None
+                else asdict(existing.logging)
+            ),
+            **(input_data.logging or {}),
+        }
+        profile = ComplianceProfile(
+            **_record_kwargs(metadata),
+            tenant_id=deployment.tenant_id,
+            deployment_id=deployment.id,
+            regime=input_data.regime,
+            serves_eu_users=input_data.serves_eu_users,
+            intended_purpose=input_data.intended_purpose,
+            risk_tier=input_data.risk_tier,
+            transparency=ComplianceTransparency(**transparency_data),
+            oversight=ComplianceOversight(**oversight_data),
+            logging=ComplianceLogging(**logging_data),
+            high_risk_basis=(
+                None
+                if input_data.high_risk_basis is None
+                else input_data.high_risk_basis
+                if isinstance(input_data.high_risk_basis, HighRiskBasis)
+                else HighRiskBasis(**input_data.high_risk_basis)
+            ),
+        )
+        self.repositories.compliance_profiles.save(profile)
+        return profile
+
+    def list_compliance_artifacts(self, deployment_id: str) -> list[ComplianceArtifact]:
+        self._ensure_deployment_exists(deployment_id)
+        return [
+            artifact
+            for artifact in self.repositories.compliance_artifacts.list()
+            if artifact.deployment_id == deployment_id
+        ]
+
+    def create_compliance_artifact(
+        self,
+        input_data: CreateComplianceArtifactInput,
+    ) -> ComplianceArtifact:
+        deployment = self._ensure_deployment_exists(input_data.deployment_id)
+        metadata = _build_record_metadata(input_data.record_id)
+        artifact = ComplianceArtifact(
+            **_record_kwargs(metadata),
+            tenant_id=deployment.tenant_id,
+            deployment_id=deployment.id,
+            kind=input_data.kind,
+            status=input_data.status,
+            owner=input_data.owner,
+            summary=input_data.summary,
+            external_ref=input_data.external_ref,
+            due_at=input_data.due_at,
+            completed_at=input_data.completed_at,
+        )
+        self.repositories.compliance_artifacts.save(artifact)
+        return artifact
 
     def start_run_session(self, input_data: StartRunSessionInput) -> RunSession:
         self._ensure_tenant_exists(input_data.tenant_id)
@@ -641,6 +835,7 @@ class CipControlPlane:
             raise CipControlPlaneError("run sessions must reference a deployment from the same tenant")
         if deployment.status != "active":
             raise CipControlPlaneError("run sessions can only be started against active deployments")
+        compliance_profile = self.get_compliance_profile(input_data.deployment_id)
 
         metadata = _build_record_metadata(input_data.record_id)
         session = RunSession(
@@ -652,6 +847,7 @@ class CipControlPlane:
             started_at=_utc_now(),
             input_summary=input_data.input_summary,
             trace_correlation=input_data.trace_correlation,
+            compliance_profile_snapshot=compliance_profile,
         )
         self.repositories.run_sessions.save(session)
         self.append_run_event(
@@ -659,6 +855,7 @@ class CipControlPlane:
                 session_id=session.id,
                 type="run_started",
                 actor=AuditActor(type="agent", id="cip-runtime"),
+                actor_verification="system",
                 payload={"correlation_id": session.correlation_id, "input_summary": session.input_summary},
                 trace_correlation=session.trace_correlation,
             )
@@ -670,7 +867,14 @@ class CipControlPlane:
             category="session",
             action="session.started",
             actor=AuditActor(type="agent", id="cip-runtime"),
-            payload={"deployment_id": deployment.id, "correlation_id": session.correlation_id},
+            actor_verification="system",
+            payload={
+                "deployment_id": deployment.id,
+                "correlation_id": session.correlation_id,
+                "compliance_profile_id": None
+                if compliance_profile is None
+                else compliance_profile.id,
+            },
         )
         return session
 
@@ -678,6 +882,7 @@ class CipControlPlane:
         session = self._ensure_run_session_exists(input_data.session_id)
         if session.status in ("completed", "failed"):
             raise CipControlPlaneError(f"session {session.id} is already terminal")
+        self._ensure_session_completion_requirements(session)
         metadata = _touch_record(session)
         updated_session = RunSession(
             **_record_kwargs(metadata),
@@ -690,6 +895,7 @@ class CipControlPlane:
             completed_at=_utc_now(),
             output_summary=input_data.output_summary,
             trace_correlation=session.trace_correlation,
+            compliance_profile_snapshot=session.compliance_profile_snapshot,
         )
         self.repositories.run_sessions.save(updated_session)
         self.append_run_event(
@@ -697,6 +903,7 @@ class CipControlPlane:
                 session_id=session.id,
                 type="run_completed" if input_data.status == "completed" else "run_failed",
                 actor=AuditActor(type="agent", id="cip-runtime"),
+                actor_verification="system",
                 payload={"output_summary": input_data.output_summary},
                 trace_correlation=session.trace_correlation,
             )
@@ -708,6 +915,7 @@ class CipControlPlane:
             category="session",
             action="session.completed",
             actor=AuditActor(type="agent", id="cip-runtime"),
+            actor_verification="system",
             payload={"status": updated_session.status},
         )
         self._persist_evidence_bundle(updated_session)
@@ -728,6 +936,8 @@ class CipControlPlane:
             sequence=len(prior_events) + 1,
             occurred_at=input_data.occurred_at or _utc_now(),
             actor=input_data.actor or AuditActor(type="agent", id="cip-runtime"),
+            asserted_actor=input_data.asserted_actor,
+            actor_verification=input_data.actor_verification or "asserted",
             payload=input_data.payload or {},
             trace_correlation=input_data.trace_correlation,
         )
@@ -749,6 +959,8 @@ class CipControlPlane:
             category=input_data.category,
             action=input_data.action,
             actor=input_data.actor,
+            asserted_actor=input_data.asserted_actor,
+            actor_verification=input_data.actor_verification or "asserted",
             payload=input_data.payload,
             severity=input_data.severity,
             occurred_at=input_data.occurred_at,
@@ -763,6 +975,129 @@ class CipControlPlane:
             ),
             None,
         )
+
+    def record_disclosure(self, input_data: RecordDisclosureInput) -> DisclosureRecord:
+        session = self._ensure_run_session_exists(input_data.session_id)
+        metadata = _build_record_metadata(input_data.record_id)
+        disclosure = DisclosureRecord(
+            **_record_kwargs(metadata),
+            tenant_id=session.tenant_id,
+            deployment_id=session.deployment_id,
+            session_id=session.id,
+            disclosure_version=input_data.disclosure_version,
+            surface=input_data.surface,
+            presented_at=input_data.presented_at,
+            acknowledged_at=input_data.acknowledged_at,
+        )
+        self.repositories.disclosure_records.save(disclosure)
+        self.append_run_event(
+            AppendRunEventInput(
+                session_id=session.id,
+                type="disclosure_presented",
+                actor=AuditActor(type="system", id="cip-control-plane"),
+                actor_verification="system",
+                payload={
+                    "disclosure_record_id": disclosure.id,
+                    "disclosure_version": disclosure.disclosure_version,
+                    "surface": disclosure.surface,
+                },
+                occurred_at=disclosure.presented_at,
+                trace_correlation=session.trace_correlation,
+            )
+        )
+        if disclosure.acknowledged_at is not None:
+            self.append_run_event(
+                AppendRunEventInput(
+                    session_id=session.id,
+                    type="disclosure_acknowledged",
+                    actor=AuditActor(type="system", id="cip-control-plane"),
+                    actor_verification="system",
+                    payload={
+                        "disclosure_record_id": disclosure.id,
+                        "disclosure_version": disclosure.disclosure_version,
+                    },
+                    occurred_at=disclosure.acknowledged_at,
+                    trace_correlation=session.trace_correlation,
+                )
+            )
+        self._record_audit_event(
+            tenant_id=session.tenant_id,
+            deployment_id=session.deployment_id,
+            session_id=session.id,
+            category="session",
+            action="disclosure.recorded",
+            actor=AuditActor(type="system", id="cip-control-plane"),
+            actor_verification="system",
+            payload={
+                "disclosure_record_id": disclosure.id,
+                "disclosure_version": disclosure.disclosure_version,
+                "acknowledged": disclosure.acknowledged_at is not None,
+            },
+            occurred_at=disclosure.presented_at,
+        )
+        return disclosure
+
+    def record_human_review(
+        self,
+        input_data: RecordHumanReviewInput,
+    ) -> HumanReviewRecord:
+        session = self._ensure_run_session_exists(input_data.session_id)
+        if (
+            session.compliance_profile_snapshot is not None
+            and session.compliance_profile_snapshot.logging.require_verified_actors
+            and input_data.actor is None
+        ):
+            raise CipControlPlaneError(
+                f"session {session.id} requires a verified human reviewer actor"
+            )
+        metadata = _build_record_metadata(input_data.record_id)
+        reviewer = input_data.actor or AuditActor(
+            type="human", id=input_data.reviewer_id or "reviewer"
+        )
+        review = HumanReviewRecord(
+            **_record_kwargs(metadata),
+            tenant_id=session.tenant_id,
+            deployment_id=session.deployment_id,
+            session_id=session.id,
+            reviewer=reviewer,
+            decision=input_data.decision,
+            reviewed_at=input_data.reviewed_at,
+            comment=input_data.comment,
+        )
+        self.repositories.human_review_records.save(review)
+        actor_verification = (
+            "authenticated-operator" if input_data.actor is not None else "asserted"
+        )
+        self.append_run_event(
+            AppendRunEventInput(
+                session_id=session.id,
+                type="human_review_completed",
+                actor=reviewer,
+                actor_verification=actor_verification,
+                payload={
+                    "human_review_id": review.id,
+                    "decision": review.decision,
+                    "comment": review.comment,
+                },
+                occurred_at=review.reviewed_at,
+                trace_correlation=session.trace_correlation,
+            )
+        )
+        self._record_audit_event(
+            tenant_id=session.tenant_id,
+            deployment_id=session.deployment_id,
+            session_id=session.id,
+            category="approval",
+            action="human_review.recorded",
+            actor=reviewer,
+            actor_verification=actor_verification,
+            payload={
+                "human_review_id": review.id,
+                "decision": review.decision,
+            },
+            occurred_at=review.reviewed_at,
+        )
+        return review
 
     def request_human_approval(
         self,
@@ -801,6 +1136,7 @@ class CipControlPlane:
             output_summary=session.output_summary,
             current_approval_request_id=approval_request.id,
             trace_correlation=session.trace_correlation,
+            compliance_profile_snapshot=session.compliance_profile_snapshot,
         )
         self.repositories.run_sessions.save(updated_session)
         self.append_run_event(
@@ -808,6 +1144,7 @@ class CipControlPlane:
                 session_id=session.id,
                 type="approval_requested",
                 actor=approval_request.requested_by,
+                actor_verification="authenticated-sdk",
                 payload={"approval_request_id": approval_request.id, "checkpoint_id": approval_request.checkpoint_id, "reason": approval_request.reason},
                 trace_correlation=session.trace_correlation,
             )
@@ -819,6 +1156,7 @@ class CipControlPlane:
             category="approval",
             action="approval.requested",
             actor=approval_request.requested_by,
+            actor_verification="authenticated-sdk",
             payload={"approval_request_id": approval_request.id, "checkpoint_id": approval_request.checkpoint_id},
         )
         return approval_request
@@ -863,6 +1201,7 @@ class CipControlPlane:
             completed_at=_utc_now() if next_status == "failed" else session.completed_at,
             output_summary=session.output_summary,
             trace_correlation=session.trace_correlation,
+            compliance_profile_snapshot=session.compliance_profile_snapshot,
         )
         self.repositories.run_sessions.save(updated_session)
 
@@ -872,6 +1211,7 @@ class CipControlPlane:
                 session_id=session.id,
                 type="approval_resolved",
                 actor=actor,
+                actor_verification="authenticated-operator",
                 payload={"approval_request_id": resolved.id, "decision": resolved.status, "resolution_comment": resolved.resolution_comment},
                 trace_correlation=session.trace_correlation,
             )
@@ -882,6 +1222,7 @@ class CipControlPlane:
                     session_id=session.id,
                     type="run_failed",
                     actor=actor,
+                    actor_verification="authenticated-operator",
                     payload={"approval_request_id": resolved.id, "decision": resolved.status},
                     trace_correlation=session.trace_correlation,
                 )
@@ -895,6 +1236,7 @@ class CipControlPlane:
             category="approval",
             action="approval.resolved",
             actor=actor,
+            actor_verification="authenticated-operator",
             payload={"approval_request_id": resolved.id, "decision": resolved.status},
         )
         return resolved
@@ -903,6 +1245,9 @@ class CipControlPlane:
         session = self._ensure_run_session_exists(session_id)
         run_events = [event for event in self.repositories.run_events.list() if event.session_id == session_id]
         approval_requests = [request for request in self.repositories.approval_requests.list() if request.session_id == session_id]
+        disclosure_records = [record for record in self.repositories.disclosure_records.list() if record.session_id == session_id]
+        human_reviews = [review for review in self.repositories.human_review_records.list() if review.session_id == session_id]
+        compliance_artifact_ids = [artifact.id for artifact in self.repositories.compliance_artifacts.list() if artifact.deployment_id == session.deployment_id]
         evidence_bundle = next(
             (bundle for bundle in self.repositories.evidence_bundles.list() if bundle.session_id == session_id),
             None,
@@ -925,6 +1270,10 @@ class CipControlPlane:
             session=session,
             run_events=run_events,
             approval_requests=approval_requests,
+            disclosure_records=disclosure_records,
+            human_reviews=human_reviews,
+            compliance_profile=session.compliance_profile_snapshot,
+            compliance_artifact_ids=compliance_artifact_ids,
             evidence_bundle=evidence_bundle,
             reconstructed_status=reconstructed_status,
         )
@@ -936,6 +1285,8 @@ class CipControlPlane:
         category: str,
         action: str,
         actor: AuditActor,
+        asserted_actor: AuditActor | None = None,
+        actor_verification: str | None,
         payload: dict[str, Any],
         deployment_id: str | None = None,
         session_id: str | None = None,
@@ -952,6 +1303,8 @@ class CipControlPlane:
             severity=severity,
             occurred_at=occurred_at or _utc_now(),
             actor=actor,
+            asserted_actor=asserted_actor,
+            actor_verification=actor_verification or "asserted",
             payload=payload,
         )
         self.repositories.audit_events.append(event)
@@ -1024,11 +1377,67 @@ class CipControlPlane:
             raise CipControlPlaneError(f"unknown approval request: {approval_request_id}")
         return approval_request
 
+    def _ensure_deployment_compliance_ready(self, deployment_id: str) -> None:
+        profile = self.get_compliance_profile(deployment_id)
+        if profile is None or profile.risk_tier != "high-risk":
+            return
+        required = {
+            "technical_documentation": "approved",
+            "fundamental_rights_impact_assessment": "approved",
+            "conformity_assessment": "approved",
+            "eu_declaration_of_conformity": "filed",
+            "eu_database_registration": "filed",
+            "post_market_monitoring_plan": "approved",
+        }
+        artifacts = self.list_compliance_artifacts(deployment_id)
+        for kind, status in required.items():
+            if not any(
+                artifact.kind == kind and artifact.status == status
+                for artifact in artifacts
+            ):
+                raise CipControlPlaneError(
+                    f"deployment {deployment_id} is missing required compliance artifact {kind}:{status}"
+                )
+
+    def _ensure_session_completion_requirements(self, session: RunSession) -> None:
+        profile = session.compliance_profile_snapshot
+        if profile is None:
+            return
+        if profile.transparency.required:
+            disclosures = [
+                record
+                for record in self.repositories.disclosure_records.list()
+                if record.session_id == session.id
+            ]
+            if not disclosures:
+                raise CipControlPlaneError(
+                    f"session {session.id} requires disclosure before completion"
+                )
+            if profile.transparency.requires_acknowledgement and not any(
+                record.acknowledged_at is not None for record in disclosures
+            ):
+                raise CipControlPlaneError(
+                    f"session {session.id} requires disclosure acknowledgement before completion"
+                )
+        if profile.oversight.require_approval_before_completion:
+            approvals = [
+                review
+                for review in self.repositories.human_review_records.list()
+                if review.session_id == session.id and review.decision == "approved"
+            ]
+            if len(approvals) < profile.oversight.minimum_human_reviewers:
+                raise CipControlPlaneError(
+                    f"session {session.id} requires {profile.oversight.minimum_human_reviewers} approved human review(s) before completion"
+                )
+
     def _persist_evidence_bundle(self, session: RunSession) -> EvidenceBundle:
         deployment = self._ensure_deployment_exists(session.deployment_id)
         blueprint = self._ensure_agent_blueprint_exists(deployment.agent_blueprint_id)
         run_events = [event for event in self.repositories.run_events.list() if event.session_id == session.id]
         audit_events = [event for event in self.repositories.audit_events.list() if event.session_id == session.id]
+        disclosure_records = [record for record in self.repositories.disclosure_records.list() if record.session_id == session.id]
+        human_reviews = [review for review in self.repositories.human_review_records.list() if review.session_id == session.id]
+        compliance_artifacts = [artifact for artifact in self.repositories.compliance_artifacts.list() if artifact.deployment_id == session.deployment_id]
         existing = next(
             (bundle for bundle in self.repositories.evidence_bundles.list() if bundle.session_id == session.id),
             None,
@@ -1046,7 +1455,11 @@ class CipControlPlane:
             summary=session.output_summary or f"Evidence bundle for {blueprint.key}@{blueprint.version}",
             run_event_ids=[event.id for event in run_events],
             audit_event_ids=[event.id for event in audit_events],
+            disclosure_record_ids=[record.id for record in disclosure_records],
+            human_review_ids=[review.id for review in human_reviews],
+            compliance_artifact_ids=[artifact.id for artifact in compliance_artifacts],
             generated_at=_utc_now(),
+            compliance_profile=session.compliance_profile_snapshot,
         )
         self.repositories.evidence_bundles.save(bundle)
         return bundle

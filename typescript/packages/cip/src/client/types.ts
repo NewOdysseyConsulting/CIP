@@ -2,11 +2,15 @@ import type {
   ApprovalRequest,
   AuditActor,
   AuditEvent,
+  ComplianceArtifact,
+  ComplianceProfile,
   ConnectorBinding,
   ConnectorDefinition,
   DeploymentRecord,
+  DisclosureRecord,
   EvidenceBundle,
   GuardrailDefinition,
+  HumanReviewRecord,
   PolicyPack,
   RunEvent,
   RunSession,
@@ -21,6 +25,9 @@ import type {
   CreateConnectorBindingInput,
   CreateCredentialBindingInput,
   DeployAgentInput,
+  CreateComplianceArtifactInput,
+  RecordDisclosureInput,
+  RecordHumanReviewInput,
   PublishGuardrailDefinitionInput,
   PublishPolicyPackInput,
   ReplayedRunSession,
@@ -31,6 +38,7 @@ import type {
   RollbackDeploymentInput,
   StartRunSessionInput,
   TransitionDeploymentInput,
+  UpsertComplianceProfileInput,
 } from "../services/cip-control-plane.js";
 import type { HumanApprovalCheckpoint } from "../runtime/types.js";
 
@@ -90,6 +98,8 @@ export interface CipRunEventEnvelope {
   kind: "run_event";
   type: RunEvent["type"];
   actor?: AuditActor;
+  assertedActor?: AuditActor;
+  actorVerification?: RunEvent["actorVerification"];
   payload?: Record<string, unknown>;
   traceCorrelation?: TraceCorrelation;
   occurredAt?: string;
@@ -101,6 +111,8 @@ export interface CipAuditEventEnvelope {
   action: string;
   severity?: AuditEvent["severity"];
   actor: AuditActor;
+  assertedActor?: AuditActor;
+  actorVerification?: AuditEvent["actorVerification"];
   payload: Record<string, unknown>;
   deploymentId?: string;
   occurredAt?: string;
@@ -176,6 +188,8 @@ export class CipRetryableError extends CipApiError {
 export interface CreateSessionRequest extends StartRunSessionInput {}
 
 export interface CompleteSessionRequest extends CompleteRunSessionInput {}
+export interface RecordDisclosureRequest extends RecordDisclosureInput {}
+export interface RecordHumanReviewRequest extends RecordHumanReviewInput {}
 
 export interface RequestApprovalRequest {
   sessionId: string;
@@ -199,6 +213,9 @@ export interface CipControlPlaneTransport {
   resolveApproval(
     input: ResolveApprovalRequestRequest,
   ): Promise<ApprovalRequest>;
+  getComplianceProfile(deploymentId: string): Promise<ComplianceProfile | null>;
+  recordDisclosure(input: RecordDisclosureRequest): Promise<DisclosureRecord>;
+  recordHumanReview(input: RecordHumanReviewRequest): Promise<HumanReviewRecord>;
   completeSession(
     input: CompleteSessionRequest,
     idempotencyKey?: string,
@@ -282,6 +299,16 @@ export interface CipAdminTransport {
   createDeployment(input: DeployAgentInput): Promise<DeploymentRecord>;
   listDeployments(tenantId?: string): Promise<DeploymentRecord[]>;
   getDeployment(id: string): Promise<DeploymentRecord | null>;
+  getComplianceProfile(deploymentId: string): Promise<ComplianceProfile | null>;
+  upsertComplianceProfile(
+    deploymentId: string,
+    input: UpsertComplianceProfileInput,
+  ): Promise<ComplianceProfile>;
+  listComplianceArtifacts(deploymentId: string): Promise<ComplianceArtifact[]>;
+  createComplianceArtifact(
+    deploymentId: string,
+    input: CreateComplianceArtifactInput,
+  ): Promise<ComplianceArtifact>;
   issueApiKey(input: CreateApiKeyRequest): Promise<IssuedApiKeyResponse>;
   listApiKeys(tenantId?: string): Promise<ApiKeyRecord[]>;
   getApiKey(id: string): Promise<ApiKeyRecord | null>;

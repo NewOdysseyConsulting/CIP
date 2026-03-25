@@ -37,6 +37,8 @@ RunSessionStatus = Literal[
     "completed",
     "failed",
 ]
+ComplianceRegime = Literal["eu-ai-act"]
+ComplianceRiskTier = Literal["minimal", "limited", "high-risk", "prohibited", "unclassified"]
 ApprovalRequestStatus = Literal[
     "pending",
     "approved",
@@ -54,9 +56,31 @@ RunEventType = Literal[
     "policy_decided",
     "approval_requested",
     "approval_resolved",
+    "disclosure_presented",
+    "disclosure_acknowledged",
+    "human_review_completed",
+    "output_overridden",
+    "stop_invoked",
     "run_completed",
     "run_failed",
 ]
+ActorVerification = Literal[
+    "system",
+    "authenticated-sdk",
+    "authenticated-operator",
+    "asserted",
+]
+ComplianceArtifactKind = Literal[
+    "technical_documentation",
+    "fundamental_rights_impact_assessment",
+    "conformity_assessment",
+    "eu_declaration_of_conformity",
+    "eu_database_registration",
+    "post_market_monitoring_plan",
+    "serious_incident_record",
+]
+ComplianceArtifactStatus = Literal["draft", "approved", "filed", "not_applicable", "expired"]
+DisclosureSurface = Literal["banner", "first_message", "banner_and_first_message"]
 GuardrailKey = Literal[
     "tenant_boundary",
     "pii_boundary",
@@ -81,6 +105,35 @@ class TraceCorrelation:
     span_id: str | None = None
     conversation_id: str | None = None
     response_id: str | None = None
+
+
+@dataclass(slots=True)
+class HighRiskBasis:
+    annex: Literal["annex-i", "annex-iii"]
+    category: str
+    rationale: str
+
+
+@dataclass(slots=True)
+class ComplianceTransparency:
+    required: bool
+    notice_text: str
+    placement: Literal["banner-and-first-message"]
+    requires_acknowledgement: bool
+
+
+@dataclass(slots=True)
+class ComplianceOversight:
+    required: bool
+    require_approval_before_completion: bool
+    minimum_human_reviewers: int
+    stop_mechanism_required: bool
+
+
+@dataclass(slots=True)
+class ComplianceLogging:
+    require_verified_actors: bool
+    retention_days: int
 
 
 @dataclass(slots=True)
@@ -230,6 +283,33 @@ class DeploymentRecord(BaseRecord):
 
 
 @dataclass(slots=True)
+class ComplianceProfile(BaseRecord):
+    tenant_id: str
+    deployment_id: str
+    regime: ComplianceRegime
+    serves_eu_users: bool
+    intended_purpose: str
+    risk_tier: ComplianceRiskTier
+    transparency: ComplianceTransparency
+    oversight: ComplianceOversight
+    logging: ComplianceLogging
+    high_risk_basis: HighRiskBasis | None = None
+
+
+@dataclass(slots=True)
+class ComplianceArtifact(BaseRecord):
+    tenant_id: str
+    deployment_id: str
+    kind: ComplianceArtifactKind
+    status: ComplianceArtifactStatus
+    owner: str
+    summary: str
+    external_ref: str | None = None
+    due_at: IsoTimestamp | None = None
+    completed_at: IsoTimestamp | None = None
+
+
+@dataclass(slots=True)
 class RunSession(BaseRecord):
     tenant_id: str
     deployment_id: str
@@ -241,6 +321,7 @@ class RunSession(BaseRecord):
     output_summary: str | None = None
     current_approval_request_id: str | None = None
     trace_correlation: TraceCorrelation | None = None
+    compliance_profile_snapshot: ComplianceProfile | None = None
 
 
 @dataclass(slots=True)
@@ -267,7 +348,9 @@ class AuditEvent:
     severity: Literal["info", "warn", "error", "critical"]
     occurred_at: IsoTimestamp
     actor: AuditActor
+    actor_verification: ActorVerification
     payload: dict[str, Any]
+    asserted_actor: AuditActor | None = None
     deployment_id: str | None = None
     session_id: str | None = None
 
@@ -307,8 +390,32 @@ class RunEvent(BaseRecord):
     sequence: int
     occurred_at: IsoTimestamp
     actor: AuditActor
+    actor_verification: ActorVerification
     payload: dict[str, Any]
+    asserted_actor: AuditActor | None = None
     trace_correlation: TraceCorrelation | None = None
+
+
+@dataclass(slots=True)
+class DisclosureRecord(BaseRecord):
+    tenant_id: str
+    deployment_id: str
+    session_id: str
+    disclosure_version: str
+    surface: DisclosureSurface
+    presented_at: IsoTimestamp
+    acknowledged_at: IsoTimestamp | None = None
+
+
+@dataclass(slots=True)
+class HumanReviewRecord(BaseRecord):
+    tenant_id: str
+    deployment_id: str
+    session_id: str
+    reviewer: AuditActor
+    decision: Literal["approved", "rejected"]
+    reviewed_at: IsoTimestamp
+    comment: str | None = None
 
 
 @dataclass(slots=True)
@@ -323,7 +430,11 @@ class EvidenceBundle(BaseRecord):
     summary: str
     run_event_ids: list[str]
     audit_event_ids: list[str]
+    disclosure_record_ids: list[str]
+    human_review_ids: list[str]
+    compliance_artifact_ids: list[str]
     generated_at: IsoTimestamp
+    compliance_profile: ComplianceProfile | None = None
 
 
 @dataclass(slots=True)

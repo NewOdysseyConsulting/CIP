@@ -8,13 +8,17 @@ from .records import (
     AgentBlueprint,
     ApprovalRequest,
     AuditEvent,
+    ComplianceArtifact,
+    ComplianceProfile,
     ConnectorBinding,
     ConnectorDefinition,
     ConnectorRateBucket,
     CredentialBinding,
+    DisclosureRecord,
     DeploymentRecord,
     EvidenceBundle,
     GuardrailDefinition,
+    HumanReviewRecord,
     PolicyPack,
     RunEvent,
     RunSession,
@@ -26,13 +30,17 @@ from .repositories import (
     AuditEventFilter,
     AuditEventRepository,
     CipRepositories,
+    ComplianceArtifactFilter,
+    ComplianceProfileFilter,
     ConnectorBindingFilter,
     ConnectorDefinitionFilter,
     ConnectorRateBucketFilter,
     CredentialBindingFilter,
+    DisclosureRecordFilter,
     DeploymentFilter,
     EvidenceBundleFilter,
     GuardrailDefinitionFilter,
+    HumanReviewRecordFilter,
     MutableRepository,
     PolicyPackFilter,
     RunEventFilter,
@@ -231,6 +239,30 @@ def _deployment_matches(record: DeploymentRecord, record_filter: DeploymentFilte
     )
 
 
+def _compliance_profile_matches(
+    record: ComplianceProfile,
+    record_filter: ComplianceProfileFilter,
+) -> bool:
+    return (
+        _matches_optional(record.tenant_id, record_filter.tenant_id)
+        and _matches_optional(record.deployment_id, record_filter.deployment_id)
+        and _matches_optional(record.regime, record_filter.regime)
+        and _matches_optional(record.risk_tier, record_filter.risk_tier)
+    )
+
+
+def _compliance_artifact_matches(
+    record: ComplianceArtifact,
+    record_filter: ComplianceArtifactFilter,
+) -> bool:
+    return (
+        _matches_optional(record.tenant_id, record_filter.tenant_id)
+        and _matches_optional(record.deployment_id, record_filter.deployment_id)
+        and _matches_optional(record.kind, record_filter.kind)
+        and _matches_optional(record.status, record_filter.status)
+    )
+
+
 def _run_session_matches(record: RunSession, record_filter: RunSessionFilter) -> bool:
     return (
         _matches_optional(record.tenant_id, record_filter.tenant_id)
@@ -248,6 +280,29 @@ def _approval_request_matches(
         and _matches_optional(record.deployment_id, record_filter.deployment_id)
         and _matches_optional(record.session_id, record_filter.session_id)
         and _matches_optional(record.status, record_filter.status)
+    )
+
+
+def _disclosure_record_matches(
+    record: DisclosureRecord,
+    record_filter: DisclosureRecordFilter,
+) -> bool:
+    return (
+        _matches_optional(record.tenant_id, record_filter.tenant_id)
+        and _matches_optional(record.deployment_id, record_filter.deployment_id)
+        and _matches_optional(record.session_id, record_filter.session_id)
+    )
+
+
+def _human_review_record_matches(
+    record: HumanReviewRecord,
+    record_filter: HumanReviewRecordFilter,
+) -> bool:
+    return (
+        _matches_optional(record.tenant_id, record_filter.tenant_id)
+        and _matches_optional(record.deployment_id, record_filter.deployment_id)
+        and _matches_optional(record.session_id, record_filter.session_id)
+        and _matches_optional(record.decision, record_filter.decision)
     )
 
 
@@ -284,8 +339,12 @@ class InMemoryCipRepositories(CipRepositories):
     guardrail_definitions: MutableRepository[GuardrailDefinition, GuardrailDefinitionFilter]
     agent_blueprints: MutableRepository[AgentBlueprint, AgentBlueprintFilter]
     deployments: MutableRepository[DeploymentRecord, DeploymentFilter]
+    compliance_profiles: MutableRepository[ComplianceProfile, ComplianceProfileFilter]
+    compliance_artifacts: MutableRepository[ComplianceArtifact, ComplianceArtifactFilter]
     run_sessions: MutableRepository[RunSession, RunSessionFilter]
     approval_requests: MutableRepository[ApprovalRequest, ApprovalRequestFilter]
+    disclosure_records: MutableRepository[DisclosureRecord, DisclosureRecordFilter]
+    human_review_records: MutableRepository[HumanReviewRecord, HumanReviewRecordFilter]
     evidence_bundles: MutableRepository[EvidenceBundle, EvidenceBundleFilter]
     connector_rate_buckets: MutableRepository[ConnectorRateBucket, ConnectorRateBucketFilter]
     audit_events: AuditEventRepository
@@ -302,8 +361,12 @@ def create_in_memory_cip_repositories() -> InMemoryCipRepositories:
         guardrail_definitions=InMemoryMutableRepository(_guardrail_definition_matches),
         agent_blueprints=InMemoryMutableRepository(_agent_blueprint_matches),
         deployments=InMemoryMutableRepository(_deployment_matches),
+        compliance_profiles=InMemoryMutableRepository(_compliance_profile_matches),
+        compliance_artifacts=InMemoryMutableRepository(_compliance_artifact_matches),
         run_sessions=InMemoryMutableRepository(_run_session_matches),
         approval_requests=InMemoryMutableRepository(_approval_request_matches),
+        disclosure_records=InMemoryMutableRepository(_disclosure_record_matches),
+        human_review_records=InMemoryMutableRepository(_human_review_record_matches),
         evidence_bundles=InMemoryMutableRepository(_evidence_bundle_matches),
         connector_rate_buckets=InMemoryMutableRepository(_connector_rate_bucket_matches),
         audit_events=InMemoryAuditEventRepository(),

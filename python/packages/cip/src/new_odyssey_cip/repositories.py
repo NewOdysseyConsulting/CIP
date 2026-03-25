@@ -7,14 +7,18 @@ from .records import (
     AgentBlueprint,
     ApprovalRequest,
     AuditEvent,
+    ComplianceArtifact,
+    ComplianceProfile,
     ConnectorBinding,
     ConnectorDefinition,
     ConnectorRateBucket,
     CredentialBinding,
+    DisclosureRecord,
     DeploymentRecord,
     Environment,
     EvidenceBundle,
     GuardrailDefinition,
+    HumanReviewRecord,
     PolicyDomain,
     PolicyPack,
     ProductTier,
@@ -94,6 +98,22 @@ class DeploymentFilter:
 
 
 @dataclass(slots=True)
+class ComplianceProfileFilter:
+    tenant_id: str | None = None
+    deployment_id: str | None = None
+    regime: str | None = None
+    risk_tier: str | None = None
+
+
+@dataclass(slots=True)
+class ComplianceArtifactFilter:
+    tenant_id: str | None = None
+    deployment_id: str | None = None
+    kind: str | None = None
+    status: str | None = None
+
+
+@dataclass(slots=True)
 class RunSessionFilter:
     tenant_id: str | None = None
     deployment_id: str | None = None
@@ -106,6 +126,21 @@ class ApprovalRequestFilter:
     deployment_id: str | None = None
     session_id: str | None = None
     status: str | None = None
+
+
+@dataclass(slots=True)
+class DisclosureRecordFilter:
+    tenant_id: str | None = None
+    deployment_id: str | None = None
+    session_id: str | None = None
+
+
+@dataclass(slots=True)
+class HumanReviewRecordFilter:
+    tenant_id: str | None = None
+    deployment_id: str | None = None
+    session_id: str | None = None
+    decision: str | None = None
 
 
 @dataclass(slots=True)
@@ -176,8 +211,12 @@ class CipRepositories(Protocol):
     guardrail_definitions: MutableRepository[GuardrailDefinition, GuardrailDefinitionFilter]
     agent_blueprints: MutableRepository[AgentBlueprint, AgentBlueprintFilter]
     deployments: MutableRepository[DeploymentRecord, DeploymentFilter]
+    compliance_profiles: MutableRepository[ComplianceProfile, ComplianceProfileFilter]
+    compliance_artifacts: MutableRepository[ComplianceArtifact, ComplianceArtifactFilter]
     run_sessions: MutableRepository[RunSession, RunSessionFilter]
     approval_requests: MutableRepository[ApprovalRequest, ApprovalRequestFilter]
+    disclosure_records: MutableRepository[DisclosureRecord, DisclosureRecordFilter]
+    human_review_records: MutableRepository[HumanReviewRecord, HumanReviewRecordFilter]
     evidence_bundles: MutableRepository[EvidenceBundle, EvidenceBundleFilter]
     connector_rate_buckets: MutableRepository[ConnectorRateBucket, ConnectorRateBucketFilter]
     audit_events: AuditEventRepository

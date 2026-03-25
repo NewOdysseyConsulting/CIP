@@ -13,11 +13,14 @@ from .control_plane import (
     AppendRunEventInput,
     CipControlPlane,
     CompleteRunSessionInput,
+    CreateComplianceArtifactInput,
     CreateConnectorBindingInput,
     CreateCredentialBindingInput,
     DeployAgentInput,
     PublishGuardrailDefinitionInput,
     PublishPolicyPackInput,
+    RecordDisclosureInput,
+    RecordHumanReviewInput,
     ReplayedRunSession,
     RegisterAgentBlueprintInput,
     RegisterConnectorDefinitionInput,
@@ -27,6 +30,7 @@ from .control_plane import (
     RollbackDeploymentInput,
     StartRunSessionInput,
     TransitionDeploymentInput,
+    UpsertComplianceProfileInput,
 )
 from .records import (
     AgentBlueprint,
@@ -34,13 +38,21 @@ from .records import (
     AuditActor,
     AuditEvent,
     BlueprintDependencySnapshot,
+    ComplianceArtifact,
+    ComplianceLogging,
+    ComplianceOversight,
+    ComplianceProfile,
+    ComplianceTransparency,
     ConnectorBinding,
     ConnectorDefinition,
     CredentialBinding,
     DependencyVersionReference,
     DeploymentRecord,
+    DisclosureRecord,
     EvidenceBundle,
     GuardrailDefinition,
+    HighRiskBasis,
+    HumanReviewRecord,
     PolicyClause,
     PolicyCondition,
     PolicyPack,
@@ -120,6 +132,57 @@ def _to_blueprint_dependency_snapshot(data: dict[str, Any]) -> BlueprintDependen
     )
 
 
+def _to_high_risk_basis(data: dict[str, Any] | None) -> HighRiskBasis | None:
+    if data is None:
+        return None
+    return HighRiskBasis(**_snakify(data))
+
+
+def _to_compliance_transparency(data: dict[str, Any]) -> ComplianceTransparency:
+    return ComplianceTransparency(**_snakify(data))
+
+
+def _to_compliance_oversight(data: dict[str, Any]) -> ComplianceOversight:
+    return ComplianceOversight(**_snakify(data))
+
+
+def _to_compliance_logging(data: dict[str, Any]) -> ComplianceLogging:
+    return ComplianceLogging(**_snakify(data))
+
+
+def _to_compliance_profile(data: dict[str, Any] | None) -> ComplianceProfile | None:
+    if data is None:
+        return None
+    payload = _snakify(data)
+    return ComplianceProfile(
+        **{
+            **payload,
+            "transparency": _to_compliance_transparency(payload["transparency"]),
+            "oversight": _to_compliance_oversight(payload["oversight"]),
+            "logging": _to_compliance_logging(payload["logging"]),
+            "high_risk_basis": _to_high_risk_basis(payload.get("high_risk_basis")),
+        }
+    )
+
+
+def _to_compliance_artifact(data: dict[str, Any]) -> ComplianceArtifact:
+    return ComplianceArtifact(**_snakify(data))
+
+
+def _to_disclosure_record(data: dict[str, Any]) -> DisclosureRecord:
+    return DisclosureRecord(**_snakify(data))
+
+
+def _to_human_review_record(data: dict[str, Any]) -> HumanReviewRecord:
+    payload = _snakify(data)
+    return HumanReviewRecord(
+        **{
+            **payload,
+            "reviewer": _to_audit_actor(payload["reviewer"]),
+        }
+    )
+
+
 def _to_policy_condition(data: dict[str, Any]) -> PolicyCondition:
     return PolicyCondition(**_snakify(data))
 
@@ -157,6 +220,9 @@ def _to_run_session(data: dict[str, Any]) -> RunSession:
         **{
             **payload,
             "trace_correlation": _to_trace_correlation(payload.get("trace_correlation")),
+            "compliance_profile_snapshot": _to_compliance_profile(
+                payload.get("compliance_profile_snapshot")
+            ),
         }
     )
 
@@ -167,6 +233,9 @@ def _to_run_event(data: dict[str, Any]) -> RunEvent:
         **{
             **payload,
             "actor": _to_audit_actor(payload["actor"]),
+            "asserted_actor": _to_audit_actor(payload["asserted_actor"])
+            if payload.get("asserted_actor") is not None
+            else None,
             "trace_correlation": _to_trace_correlation(payload.get("trace_correlation")),
         }
     )
@@ -188,6 +257,9 @@ def _to_audit_event(data: dict[str, Any]) -> AuditEvent:
         **{
             **payload,
             "actor": _to_audit_actor(payload["actor"]),
+            "asserted_actor": _to_audit_actor(payload["asserted_actor"])
+            if payload.get("asserted_actor") is not None
+            else None,
         }
     )
 
@@ -263,6 +335,7 @@ def _to_evidence_bundle(data: dict[str, Any]) -> EvidenceBundle:
             "guardrail_versions": [
                 _to_dependency_reference(item) for item in payload["guardrail_versions"]
             ],
+            "compliance_profile": _to_compliance_profile(payload.get("compliance_profile")),
         }
     )
 
@@ -274,6 +347,14 @@ def _to_replayed_run_session(data: dict[str, Any]) -> ReplayedRunSession:
         session=_to_run_session(payload["session"]),
         run_events=[_to_run_event(item) for item in payload["run_events"]],
         approval_requests=[_to_approval_request(item) for item in payload["approval_requests"]],
+        disclosure_records=[
+            _to_disclosure_record(item) for item in payload.get("disclosure_records", [])
+        ],
+        human_reviews=[
+            _to_human_review_record(item) for item in payload.get("human_reviews", [])
+        ],
+        compliance_profile=_to_compliance_profile(payload.get("compliance_profile")),
+        compliance_artifact_ids=payload.get("compliance_artifact_ids", []),
         evidence_bundle=None if evidence_bundle is None else _to_evidence_bundle(evidence_bundle),
         reconstructed_status=payload["reconstructed_status"],
     )
@@ -319,6 +400,8 @@ class CipRunEventEnvelope:
     kind: str
     type: str
     actor: dict[str, Any] | None = None
+    asserted_actor: dict[str, Any] | None = None
+    actor_verification: str | None = None
     payload: dict[str, Any] | None = None
     trace_correlation: dict[str, Any] | None = None
     occurred_at: str | None = None
@@ -331,6 +414,8 @@ class CipAuditEventEnvelope:
     action: str
     actor: dict[str, Any]
     payload: dict[str, Any]
+    asserted_actor: dict[str, Any] | None = None
+    actor_verification: str | None = None
     severity: str = "info"
     deployment_id: str | None = None
     occurred_at: str | None = None
@@ -495,6 +580,12 @@ class CipControlPlaneTransport(Protocol):
         input_data: ResolveApprovalRequestInput,
     ) -> ApprovalRequest: ...
 
+    def get_compliance_profile(self, deployment_id: str) -> ComplianceProfile | None: ...
+
+    def record_disclosure(self, input_data: RecordDisclosureInput) -> DisclosureRecord: ...
+
+    def record_human_review(self, input_data: RecordHumanReviewInput) -> HumanReviewRecord: ...
+
     def complete_session(
         self,
         input_data: CompleteRunSessionInput,
@@ -606,6 +697,23 @@ class CipAdminTransport(Protocol):
 
     def get_deployment(self, record_id: str) -> DeploymentRecord | None: ...
 
+    def get_compliance_profile(self, deployment_id: str) -> ComplianceProfile | None: ...
+
+    def upsert_compliance_profile(
+        self,
+        input_data: UpsertComplianceProfileInput,
+    ) -> ComplianceProfile: ...
+
+    def list_compliance_artifacts(
+        self,
+        deployment_id: str,
+    ) -> list[ComplianceArtifact]: ...
+
+    def create_compliance_artifact(
+        self,
+        input_data: CreateComplianceArtifactInput,
+    ) -> ComplianceArtifact: ...
+
     def issue_api_key(self, input_data: CreateApiKeyRequest) -> IssuedApiKeyResponse: ...
 
     def list_api_keys(self, tenant_id: str | None = None) -> list[ApiKeyRecord]: ...
@@ -651,7 +759,11 @@ class LocalCipControlPlaneTransport:
                     AppendRunEventInput(
                         session_id=batch.session_id,
                         type=event["type"],
-                        actor=None if event.get("actor") is None else AuditActor(**event["actor"]),
+                        actor=AuditActor(type="agent", id="local-cip-transport"),
+                        asserted_actor=None
+                        if event.get("actor") is None
+                        else AuditActor(**event["actor"]),
+                        actor_verification=event.get("actor_verification") or "asserted",
                         payload=event.get("payload"),
                         trace_correlation=None
                         if event.get("trace_correlation") is None
@@ -669,7 +781,9 @@ class LocalCipControlPlaneTransport:
                     category=event["category"],
                     action=event["action"],
                     severity=event.get("severity", "info"),
-                    actor=AuditActor(**event["actor"]),
+                    actor=AuditActor(type="agent", id="local-cip-transport"),
+                    asserted_actor=AuditActor(**event["actor"]),
+                    actor_verification=event.get("actor_verification") or "asserted",
                     payload=event["payload"],
                     occurred_at=event.get("occurred_at"),
                 )
@@ -686,6 +800,15 @@ class LocalCipControlPlaneTransport:
 
     def resolve_approval(self, input_data: ResolveApprovalRequestInput) -> ApprovalRequest:
         return self._control_plane.resolve_approval_request(input_data)
+
+    def get_compliance_profile(self, deployment_id: str) -> ComplianceProfile | None:
+        return self._control_plane.get_compliance_profile(deployment_id)
+
+    def record_disclosure(self, input_data: RecordDisclosureInput) -> DisclosureRecord:
+        return self._control_plane.record_disclosure(input_data)
+
+    def record_human_review(self, input_data: RecordHumanReviewInput) -> HumanReviewRecord:
+        return self._control_plane.record_human_review(input_data)
 
     def complete_session(
         self,
@@ -858,6 +981,32 @@ class HttpCipControlPlaneTransport(_BaseHttpTransport):
             json_body=input_data,
         )
         return _to_approval_request(data)
+
+    def get_compliance_profile(self, deployment_id: str) -> ComplianceProfile | None:
+        data = self._request_json(
+            "GET",
+            f"/v1/deployments/{deployment_id}/compliance-profile",
+            auth_mode="sdk",
+        )
+        return None if data is None else _to_compliance_profile(data)
+
+    def record_disclosure(self, input_data: RecordDisclosureInput) -> DisclosureRecord:
+        data = self._request_json(
+            "POST",
+            f"/v1/sessions/{input_data.session_id}:record-disclosure",
+            auth_mode="sdk",
+            json_body=input_data,
+        )
+        return _to_disclosure_record(data)
+
+    def record_human_review(self, input_data: RecordHumanReviewInput) -> HumanReviewRecord:
+        data = self._request_json(
+            "POST",
+            f"/v1/sessions/{input_data.session_id}:record-human-review",
+            auth_mode="operator",
+            json_body=input_data,
+        )
+        return _to_human_review_record(data)
 
     def complete_session(
         self,
@@ -1161,6 +1310,49 @@ class HttpCipAdminTransport(_BaseHttpTransport):
         )
         return None if data is None else _to_deployment_record(data)
 
+    def get_compliance_profile(self, deployment_id: str) -> ComplianceProfile | None:
+        data = self._request_json(
+            "GET",
+            f"/v1/admin/deployments/{deployment_id}/compliance-profile",
+            auth_mode="operator",
+        )
+        return None if data is None else _to_compliance_profile(data)
+
+    def upsert_compliance_profile(
+        self,
+        input_data: UpsertComplianceProfileInput,
+    ) -> ComplianceProfile:
+        data = self._request_json(
+            "PUT",
+            f"/v1/admin/deployments/{input_data.deployment_id}/compliance-profile",
+            auth_mode="operator",
+            json_body=input_data,
+        )
+        return _to_compliance_profile(data)
+
+    def list_compliance_artifacts(
+        self,
+        deployment_id: str,
+    ) -> list[ComplianceArtifact]:
+        data = self._request_json(
+            "GET",
+            f"/v1/admin/deployments/{deployment_id}/compliance-artifacts",
+            auth_mode="operator",
+        )
+        return [_to_compliance_artifact(item) for item in data]
+
+    def create_compliance_artifact(
+        self,
+        input_data: CreateComplianceArtifactInput,
+    ) -> ComplianceArtifact:
+        data = self._request_json(
+            "POST",
+            f"/v1/admin/deployments/{input_data.deployment_id}/compliance-artifacts",
+            auth_mode="operator",
+            json_body=input_data,
+        )
+        return _to_compliance_artifact(data)
+
     def issue_api_key(self, input_data: CreateApiKeyRequest) -> IssuedApiKeyResponse:
         data = self._request_json(
             "POST",
@@ -1249,6 +1441,15 @@ class CipClient:
 
     def resolve_approval(self, input_data: ResolveApprovalRequestInput) -> ApprovalRequest:
         return self._transport.resolve_approval(input_data)
+
+    def get_compliance_profile(self, deployment_id: str) -> ComplianceProfile | None:
+        return self._transport.get_compliance_profile(deployment_id)
+
+    def record_disclosure(self, input_data: RecordDisclosureInput) -> DisclosureRecord:
+        return self._transport.record_disclosure(input_data)
+
+    def record_human_review(self, input_data: RecordHumanReviewInput) -> HumanReviewRecord:
+        return self._transport.record_human_review(input_data)
 
     def complete_session(self, input_data: CompleteRunSessionInput, idempotency_key: str | None = None) -> RunSession:
         return self._transport.complete_session(input_data, idempotency_key)
@@ -1374,6 +1575,27 @@ class CipAdminClient:
 
     def get_deployment(self, record_id: str) -> DeploymentRecord | None:
         return self._transport.get_deployment(record_id)
+
+    def get_compliance_profile(self, deployment_id: str) -> ComplianceProfile | None:
+        return self._transport.get_compliance_profile(deployment_id)
+
+    def upsert_compliance_profile(
+        self,
+        input_data: UpsertComplianceProfileInput,
+    ) -> ComplianceProfile:
+        return self._transport.upsert_compliance_profile(input_data)
+
+    def list_compliance_artifacts(
+        self,
+        deployment_id: str,
+    ) -> list[ComplianceArtifact]:
+        return self._transport.list_compliance_artifacts(deployment_id)
+
+    def create_compliance_artifact(
+        self,
+        input_data: CreateComplianceArtifactInput,
+    ) -> ComplianceArtifact:
+        return self._transport.create_compliance_artifact(input_data)
 
     def issue_api_key(self, input_data: CreateApiKeyRequest) -> IssuedApiKeyResponse:
         return self._transport.issue_api_key(input_data)
@@ -1511,6 +1733,15 @@ class CipRunTracker:
 
     def get_replay(self, session_id: str) -> ReplayedRunSession:
         return self._client.get_replay(session_id)
+
+    def get_compliance_profile(self, deployment_id: str) -> ComplianceProfile | None:
+        return self._client.get_compliance_profile(deployment_id)
+
+    def record_disclosure(self, input_data: RecordDisclosureInput) -> DisclosureRecord:
+        return self._client.record_disclosure(input_data)
+
+    def record_human_review(self, input_data: RecordHumanReviewInput) -> HumanReviewRecord:
+        return self._client.record_human_review(input_data)
 
     def get_evidence_bundle(self, session_id: str) -> EvidenceBundle | None:
         return self._client.get_evidence_bundle(session_id)

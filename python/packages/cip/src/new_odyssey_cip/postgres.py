@@ -8,13 +8,17 @@ from .records import (
     AgentBlueprint,
     ApprovalRequest,
     AuditEvent,
+    ComplianceArtifact,
+    ComplianceProfile,
     ConnectorBinding,
     ConnectorDefinition,
     ConnectorRateBucket,
     CredentialBinding,
+    DisclosureRecord,
     DeploymentRecord,
     EvidenceBundle,
     GuardrailDefinition,
+    HumanReviewRecord,
     PolicyPack,
     RunEvent,
     RunSession,
@@ -25,13 +29,17 @@ from .repositories import (
     ApprovalRequestFilter,
     AuditEventFilter,
     CipRepositories,
+    ComplianceArtifactFilter,
+    ComplianceProfileFilter,
     ConnectorBindingFilter,
     ConnectorDefinitionFilter,
     ConnectorRateBucketFilter,
     CredentialBindingFilter,
+    DisclosureRecordFilter,
     DeploymentFilter,
     EvidenceBundleFilter,
     GuardrailDefinitionFilter,
+    HumanReviewRecordFilter,
     PolicyPackFilter,
     RunEventFilter,
     RunSessionFilter,
@@ -171,8 +179,12 @@ def create_postgres_cip_repositories(connection: Any) -> CipRepositories:
         guardrail_definitions = _JsonbRepository(connection, "guardrail_definitions", lambda record: {"key": record.key, "version": record.version, "status": record.status}, _factory(GuardrailDefinition))
         agent_blueprints = _JsonbRepository(connection, "agent_blueprints", lambda record: {"key": record.key, "version": record.version, "status": record.status, "domain": record.domain, "release_state": record.release_state}, _factory(AgentBlueprint))
         deployments = _JsonbRepository(connection, "deployments", lambda record: {"tenant_id": record.tenant_id, "deployment_id": record.id, "environment": record.environment, "status": record.status}, _factory(DeploymentRecord))
+        compliance_profiles = _JsonbRepository(connection, "compliance_profiles", lambda record: {"tenant_id": record.tenant_id, "deployment_id": record.deployment_id, "status": record.risk_tier}, _factory(ComplianceProfile))
+        compliance_artifacts = _JsonbRepository(connection, "compliance_artifacts", lambda record: {"tenant_id": record.tenant_id, "deployment_id": record.deployment_id, "key": record.kind, "status": record.status}, _factory(ComplianceArtifact))
         run_sessions = _JsonbRepository(connection, "run_sessions", lambda record: {"tenant_id": record.tenant_id, "deployment_id": record.deployment_id, "session_id": record.id, "status": record.status}, _factory(RunSession))
         approval_requests = _JsonbRepository(connection, "approval_requests", lambda record: {"tenant_id": record.tenant_id, "deployment_id": record.deployment_id, "session_id": record.session_id, "status": record.status}, _factory(ApprovalRequest))
+        disclosure_records = _JsonbRepository(connection, "disclosure_records", lambda record: {"tenant_id": record.tenant_id, "deployment_id": record.deployment_id, "session_id": record.session_id, "occurred_at": record.presented_at}, _factory(DisclosureRecord))
+        human_review_records = _JsonbRepository(connection, "human_review_records", lambda record: {"tenant_id": record.tenant_id, "deployment_id": record.deployment_id, "session_id": record.session_id, "status": record.decision, "occurred_at": record.reviewed_at}, _factory(HumanReviewRecord))
         evidence_bundles = _JsonbRepository(connection, "evidence_bundles", lambda record: {"tenant_id": record.tenant_id, "deployment_id": record.deployment_id, "session_id": record.session_id}, _factory(EvidenceBundle))
         connector_rate_buckets = _JsonbRepository(connection, "connector_rate_buckets", lambda record: {"provider": record.provider, "environment": record.environment, "api_family": record.api_family, "external_system_tenant": record.external_system_tenant, "status": record.status}, _factory(ConnectorRateBucket))
         audit_events = _JsonbRepository(connection, "audit_events", lambda record: {"tenant_id": record.tenant_id, "deployment_id": record.deployment_id, "session_id": record.session_id, "category": record.category, "occurred_at": record.occurred_at}, _factory(AuditEvent))

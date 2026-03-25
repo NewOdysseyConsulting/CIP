@@ -4,51 +4,136 @@
   "title": "CIP Control Plane Schema",
   "type": "object",
   "properties": {
-    "tenant": { "$ref": "#/$defs/TenantRecord" },
-    "connectorDefinition": { "$ref": "#/$defs/ConnectorDefinition" },
-    "credentialBinding": { "$ref": "#/$defs/CredentialBinding" },
-    "connectorBinding": { "$ref": "#/$defs/ConnectorBinding" },
-    "policyPack": { "$ref": "#/$defs/PolicyPack" },
-    "agentBlueprint": { "$ref": "#/$defs/AgentBlueprint" },
-    "deployment": { "$ref": "#/$defs/DeploymentRecord" },
-    "runSession": { "$ref": "#/$defs/RunSession" },
-    "approvalRequest": { "$ref": "#/$defs/ApprovalRequest" },
-    "runEvent": { "$ref": "#/$defs/RunEvent" },
-    "auditEvent": { "$ref": "#/$defs/AuditEvent" },
-    "eventBatch": { "$ref": "#/$defs/CipEventBatch" },
-    "ingestReceipt": { "$ref": "#/$defs/CipIngestReceipt" },
-    "apiKeyRecord": { "$ref": "#/$defs/ApiKeyRecord" },
-    "ingestJob": { "$ref": "#/$defs/IngestJobRecord" },
-    "deadLetterJob": { "$ref": "#/$defs/DeadLetterJobRecord" },
-    "evidenceBundle": { "$ref": "#/$defs/EvidenceBundle" },
-    "guardrailDefinition": { "$ref": "#/$defs/GuardrailDefinition" }
+    "tenant": {
+      "$ref": "#/$defs/TenantRecord"
+    },
+    "connectorDefinition": {
+      "$ref": "#/$defs/ConnectorDefinition"
+    },
+    "credentialBinding": {
+      "$ref": "#/$defs/CredentialBinding"
+    },
+    "connectorBinding": {
+      "$ref": "#/$defs/ConnectorBinding"
+    },
+    "policyPack": {
+      "$ref": "#/$defs/PolicyPack"
+    },
+    "agentBlueprint": {
+      "$ref": "#/$defs/AgentBlueprint"
+    },
+    "deployment": {
+      "$ref": "#/$defs/DeploymentRecord"
+    },
+    "runSession": {
+      "$ref": "#/$defs/RunSession"
+    },
+    "approvalRequest": {
+      "$ref": "#/$defs/ApprovalRequest"
+    },
+    "runEvent": {
+      "$ref": "#/$defs/RunEvent"
+    },
+    "auditEvent": {
+      "$ref": "#/$defs/AuditEvent"
+    },
+    "eventBatch": {
+      "$ref": "#/$defs/CipEventBatch"
+    },
+    "ingestReceipt": {
+      "$ref": "#/$defs/CipIngestReceipt"
+    },
+    "apiKeyRecord": {
+      "$ref": "#/$defs/ApiKeyRecord"
+    },
+    "ingestJob": {
+      "$ref": "#/$defs/IngestJobRecord"
+    },
+    "deadLetterJob": {
+      "$ref": "#/$defs/DeadLetterJobRecord"
+    },
+    "evidenceBundle": {
+      "$ref": "#/$defs/EvidenceBundle"
+    },
+    "guardrailDefinition": {
+      "$ref": "#/$defs/GuardrailDefinition"
+    },
+    "complianceProfile": {
+      "$ref": "#/$defs/ComplianceProfile"
+    },
+    "complianceArtifact": {
+      "$ref": "#/$defs/ComplianceArtifact"
+    },
+    "disclosureRecord": {
+      "$ref": "#/$defs/DisclosureRecord"
+    },
+    "humanReviewRecord": {
+      "$ref": "#/$defs/HumanReviewRecord"
+    }
   },
   "$defs": {
     "BaseRecord": {
       "type": "object",
-      "required": ["id", "createdAt", "updatedAt", "revision"],
+      "required": [
+        "id",
+        "createdAt",
+        "updatedAt",
+        "revision"
+      ],
       "properties": {
-        "id": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" },
-        "revision": { "type": "integer", "minimum": 1 }
+        "id": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
     "AuditActor": {
       "type": "object",
-      "required": ["type", "id"],
+      "required": [
+        "type",
+        "id"
+      ],
       "properties": {
-        "type": { "enum": ["agent", "human", "system"] },
-        "id": { "type": "string" }
+        "type": {
+          "enum": [
+            "agent",
+            "human",
+            "system"
+          ]
+        },
+        "id": {
+          "type": "string"
+        }
       }
     },
     "DependencyVersionReference": {
       "type": "object",
-      "required": ["id", "key", "version"],
+      "required": [
+        "id",
+        "key",
+        "version"
+      ],
       "properties": {
-        "id": { "type": "string" },
-        "key": { "type": "string" },
-        "version": { "type": "string" }
+        "id": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
       }
     },
     "BlueprintDependencySnapshot": {
@@ -62,22 +147,32 @@
       "properties": {
         "policyPacks": {
           "type": "array",
-          "items": { "$ref": "#/$defs/DependencyVersionReference" }
+          "items": {
+            "$ref": "#/$defs/DependencyVersionReference"
+          }
         },
         "guardrails": {
           "type": "array",
-          "items": { "$ref": "#/$defs/DependencyVersionReference" }
+          "items": {
+            "$ref": "#/$defs/DependencyVersionReference"
+          }
         },
         "connectorManifests": {
           "type": "array",
-          "items": { "$ref": "#/$defs/DependencyVersionReference" }
+          "items": {
+            "$ref": "#/$defs/DependencyVersionReference"
+          }
         },
-        "runtimeAdapterVersion": { "type": "string" }
+        "runtimeAdapterVersion": {
+          "type": "string"
+        }
       }
     },
     "TenantRecord": {
       "allOf": [
-        { "$ref": "#/$defs/BaseRecord" },
+        {
+          "$ref": "#/$defs/BaseRecord"
+        },
         {
           "type": "object",
           "required": [
@@ -89,19 +184,47 @@
             "status"
           ],
           "properties": {
-            "slug": { "type": "string" },
-            "displayName": { "type": "string" },
-            "productTier": { "enum": ["pegasus", "pantheon", "phoenix"] },
-            "platforms": { "type": "array", "items": { "type": "string" } },
-            "regions": { "type": "array", "items": { "type": "string" } },
-            "status": { "enum": ["active", "suspended", "retired"] }
+            "slug": {
+              "type": "string"
+            },
+            "displayName": {
+              "type": "string"
+            },
+            "productTier": {
+              "enum": [
+                "pegasus",
+                "pantheon",
+                "phoenix"
+              ]
+            },
+            "platforms": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "regions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "status": {
+              "enum": [
+                "active",
+                "suspended",
+                "retired"
+              ]
+            }
           }
         }
       ]
     },
     "ConnectorDefinition": {
       "allOf": [
-        { "$ref": "#/$defs/BaseRecord" },
+        {
+          "$ref": "#/$defs/BaseRecord"
+        },
         {
           "type": "object",
           "required": [
@@ -116,27 +239,71 @@
             "status"
           ],
           "properties": {
-            "key": { "type": "string" },
-            "version": { "type": "string" },
-            "platform": { "type": "string" },
-            "displayName": { "type": "string" },
-            "driverKey": { "type": "string" },
-            "driverConfig": { "type": "object" },
-            "runtime": { "enum": ["mcp", "native", "http"] },
-            "authStrategy": {
-              "enum": ["oauth2", "api-key", "service-account", "custom"]
+            "key": {
+              "type": "string"
             },
-            "source": { "enum": ["first-party", "partner", "community"] },
-            "capabilities": { "type": "array", "items": { "type": "string" } },
-            "status": { "enum": ["draft", "active", "deprecated"] },
-            "metadata": { "type": "object" }
+            "version": {
+              "type": "string"
+            },
+            "platform": {
+              "type": "string"
+            },
+            "displayName": {
+              "type": "string"
+            },
+            "driverKey": {
+              "type": "string"
+            },
+            "driverConfig": {
+              "type": "object"
+            },
+            "runtime": {
+              "enum": [
+                "mcp",
+                "native",
+                "http"
+              ]
+            },
+            "authStrategy": {
+              "enum": [
+                "oauth2",
+                "api-key",
+                "service-account",
+                "custom"
+              ]
+            },
+            "source": {
+              "enum": [
+                "first-party",
+                "partner",
+                "community"
+              ]
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "status": {
+              "enum": [
+                "draft",
+                "active",
+                "deprecated"
+              ]
+            },
+            "metadata": {
+              "type": "object"
+            }
           }
         }
       ]
     },
     "CredentialBinding": {
       "allOf": [
-        { "$ref": "#/$defs/BaseRecord" },
+        {
+          "$ref": "#/$defs/BaseRecord"
+        },
         {
           "type": "object",
           "required": [
@@ -148,22 +315,51 @@
             "status"
           ],
           "properties": {
-            "tenantId": { "type": "string" },
-            "name": { "type": "string" },
-            "provider": { "type": "string" },
-            "secretBackendKey": { "type": "string" },
-            "secretRef": { "type": "string" },
-            "scopes": { "type": "array", "items": { "type": "string" } },
-            "expiresAt": { "type": "string", "format": "date-time" },
-            "rotatedAt": { "type": "string", "format": "date-time" },
-            "status": { "enum": ["active", "rotated", "revoked"] }
+            "tenantId": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "secretBackendKey": {
+              "type": "string"
+            },
+            "secretRef": {
+              "type": "string"
+            },
+            "scopes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "expiresAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "rotatedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "status": {
+              "enum": [
+                "active",
+                "rotated",
+                "revoked"
+              ]
+            }
           }
         }
       ]
     },
     "ConnectorBinding": {
       "allOf": [
-        { "$ref": "#/$defs/BaseRecord" },
+        {
+          "$ref": "#/$defs/BaseRecord"
+        },
         {
           "type": "object",
           "required": [
@@ -177,61 +373,148 @@
             "status"
           ],
           "properties": {
-            "tenantId": { "type": "string" },
-            "connectorDefinitionId": { "type": "string" },
-            "credentialBindingId": { "type": "string" },
-            "environment": { "enum": ["development", "test", "sandbox", "production"] },
-            "alias": { "type": "string" },
-            "endpoint": { "type": "string" },
-            "config": { "type": "object" },
-            "status": { "enum": ["active", "disabled"] }
+            "tenantId": {
+              "type": "string"
+            },
+            "connectorDefinitionId": {
+              "type": "string"
+            },
+            "credentialBindingId": {
+              "type": "string"
+            },
+            "environment": {
+              "enum": [
+                "development",
+                "test",
+                "sandbox",
+                "production"
+              ]
+            },
+            "alias": {
+              "type": "string"
+            },
+            "endpoint": {
+              "type": "string"
+            },
+            "config": {
+              "type": "object"
+            },
+            "status": {
+              "enum": [
+                "active",
+                "disabled"
+              ]
+            }
           }
         }
       ]
     },
     "PolicyCondition": {
       "type": "object",
-      "required": ["path", "operator"],
+      "required": [
+        "path",
+        "operator"
+      ],
       "properties": {
-        "path": { "type": "string" },
+        "path": {
+          "type": "string"
+        },
         "operator": {
-          "enum": ["eq", "neq", "in", "contains", "exists", "regex", "gt", "gte", "lt", "lte"]
+          "enum": [
+            "eq",
+            "neq",
+            "in",
+            "contains",
+            "exists",
+            "regex",
+            "gt",
+            "gte",
+            "lt",
+            "lte"
+          ]
         },
         "value": {}
       }
     },
     "PolicyClause": {
       "type": "object",
-      "required": ["id", "name", "match", "conditions"],
+      "required": [
+        "id",
+        "name",
+        "match",
+        "conditions"
+      ],
       "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
-        "match": { "enum": ["all", "any"] },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "match": {
+          "enum": [
+            "all",
+            "any"
+          ]
+        },
         "conditions": {
           "type": "array",
-          "items": { "$ref": "#/$defs/PolicyCondition" }
+          "items": {
+            "$ref": "#/$defs/PolicyCondition"
+          }
         }
       }
     },
     "PolicyRule": {
       "type": "object",
-      "required": ["id", "name", "severity", "action"],
+      "required": [
+        "id",
+        "name",
+        "severity",
+        "action"
+      ],
       "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
-        "description": { "type": "string" },
-        "expression": { "type": "string" },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "expression": {
+          "type": "string"
+        },
         "clauses": {
           "type": "array",
-          "items": { "$ref": "#/$defs/PolicyClause" }
+          "items": {
+            "$ref": "#/$defs/PolicyClause"
+          }
         },
-        "severity": { "enum": ["info", "warn", "high", "critical"] },
-        "action": { "enum": ["allow", "flag", "block", "escalate"] }
+        "severity": {
+          "enum": [
+            "info",
+            "warn",
+            "high",
+            "critical"
+          ]
+        },
+        "action": {
+          "enum": [
+            "allow",
+            "flag",
+            "block",
+            "escalate"
+          ]
+        }
       }
     },
     "PolicyPack": {
       "allOf": [
-        { "$ref": "#/$defs/BaseRecord" },
+        {
+          "$ref": "#/$defs/BaseRecord"
+        },
         {
           "type": "object",
           "required": [
@@ -245,27 +528,61 @@
             "status"
           ],
           "properties": {
-            "key": { "type": "string" },
-            "name": { "type": "string" },
-            "domain": {
-              "enum": ["platform", "security", "expense", "recruitment", "onboarding"]
+            "key": {
+              "type": "string"
             },
-            "version": { "type": "string" },
-            "ownership": { "enum": ["shared", "tenant"] },
-            "tenantId": { "type": "string" },
+            "name": {
+              "type": "string"
+            },
+            "domain": {
+              "enum": [
+                "platform",
+                "security",
+                "expense",
+                "recruitment",
+                "onboarding"
+              ]
+            },
+            "version": {
+              "type": "string"
+            },
+            "ownership": {
+              "enum": [
+                "shared",
+                "tenant"
+              ]
+            },
+            "tenantId": {
+              "type": "string"
+            },
             "rules": {
               "type": "array",
-              "items": { "$ref": "#/$defs/PolicyRule" }
+              "items": {
+                "$ref": "#/$defs/PolicyRule"
+              }
             },
-            "guardrailRefs": { "type": "array", "items": { "type": "string" } },
-            "status": { "enum": ["draft", "active", "retired"] }
+            "guardrailRefs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "status": {
+              "enum": [
+                "draft",
+                "active",
+                "retired"
+              ]
+            }
           }
         }
       ]
     },
     "AgentBlueprint": {
       "allOf": [
-        { "$ref": "#/$defs/BaseRecord" },
+        {
+          "$ref": "#/$defs/BaseRecord"
+        },
         {
           "type": "object",
           "required": [
@@ -285,43 +602,93 @@
             "status"
           ],
           "properties": {
-            "key": { "type": "string" },
-            "version": { "type": "string" },
-            "releaseState": { "enum": ["draft", "released", "deprecated"] },
-            "dependencySnapshot": { "$ref": "#/$defs/BlueprintDependencySnapshot" },
-            "supersedesBlueprintId": { "type": "string" },
-            "name": { "type": "string" },
-            "productTier": { "enum": ["pegasus", "pantheon", "phoenix"] },
-            "domain": {
-              "enum": ["platform", "security", "expense", "recruitment", "onboarding"]
+            "key": {
+              "type": "string"
             },
-            "description": { "type": "string" },
-            "runtime": { "type": "object" },
+            "version": {
+              "type": "string"
+            },
+            "releaseState": {
+              "enum": [
+                "draft",
+                "released",
+                "deprecated"
+              ]
+            },
+            "dependencySnapshot": {
+              "$ref": "#/$defs/BlueprintDependencySnapshot"
+            },
+            "supersedesBlueprintId": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "productTier": {
+              "enum": [
+                "pegasus",
+                "pantheon",
+                "phoenix"
+              ]
+            },
+            "domain": {
+              "enum": [
+                "platform",
+                "security",
+                "expense",
+                "recruitment",
+                "onboarding"
+              ]
+            },
+            "description": {
+              "type": "string"
+            },
+            "runtime": {
+              "type": "object"
+            },
             "connectorDefinitionIds": {
               "type": "array",
-              "items": { "type": "string" }
+              "items": {
+                "type": "string"
+              }
             },
             "policyPackIds": {
               "type": "array",
-              "items": { "type": "string" }
+              "items": {
+                "type": "string"
+              }
             },
             "guardrailDefinitionIds": {
               "type": "array",
-              "items": { "type": "string" }
+              "items": {
+                "type": "string"
+              }
             },
             "handoffTargets": {
               "type": "array",
-              "items": { "type": "string" }
+              "items": {
+                "type": "string"
+              }
             },
-            "structuredOutput": { "type": "string" },
-            "status": { "enum": ["draft", "active", "deprecated"] }
+            "structuredOutput": {
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "draft",
+                "active",
+                "deprecated"
+              ]
+            }
           }
         }
       ]
     },
     "DeploymentRecord": {
       "allOf": [
-        { "$ref": "#/$defs/BaseRecord" },
+        {
+          "$ref": "#/$defs/BaseRecord"
+        },
         {
           "type": "object",
           "required": [
@@ -336,31 +703,68 @@
             "tags"
           ],
           "properties": {
-            "tenantId": { "type": "string" },
-            "agentBlueprintId": { "type": "string" },
-            "agentBlueprintVersion": { "type": "string" },
-            "environment": { "enum": ["development", "test", "sandbox", "production"] },
+            "tenantId": {
+              "type": "string"
+            },
+            "agentBlueprintId": {
+              "type": "string"
+            },
+            "agentBlueprintVersion": {
+              "type": "string"
+            },
+            "environment": {
+              "enum": [
+                "development",
+                "test",
+                "sandbox",
+                "production"
+              ]
+            },
             "connectorBindingIds": {
               "type": "array",
-              "items": { "type": "string" }
+              "items": {
+                "type": "string"
+              }
             },
             "policyPackIds": {
               "type": "array",
-              "items": { "type": "string" }
+              "items": {
+                "type": "string"
+              }
             },
             "status": {
-              "enum": ["provisioning", "active", "paused", "draining", "failed", "retired"]
+              "enum": [
+                "provisioning",
+                "active",
+                "paused",
+                "draining",
+                "failed",
+                "retired"
+              ]
             },
-            "deployedAt": { "type": "string", "format": "date-time" },
-            "lastTransitionAt": { "type": "string", "format": "date-time" },
-            "tags": { "type": "array", "items": { "type": "string" } }
+            "deployedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "lastTransitionAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           }
         }
       ]
     },
     "RunSession": {
       "allOf": [
-        { "$ref": "#/$defs/BaseRecord" },
+        {
+          "$ref": "#/$defs/BaseRecord"
+        },
         {
           "type": "object",
           "required": [
@@ -372,25 +776,63 @@
             "inputSummary"
           ],
           "properties": {
-            "tenantId": { "type": "string" },
-            "deploymentId": { "type": "string" },
-            "correlationId": { "type": "string" },
-            "status": {
-              "enum": ["queued", "running", "waiting-human", "completed", "failed"]
+            "tenantId": {
+              "type": "string"
             },
-            "startedAt": { "type": "string", "format": "date-time" },
-            "completedAt": { "type": "string", "format": "date-time" },
-            "inputSummary": { "type": "string" },
-            "outputSummary": { "type": "string" },
-            "currentApprovalRequestId": { "type": "string" },
-            "traceCorrelation": { "type": "object" }
+            "deploymentId": {
+              "type": "string"
+            },
+            "correlationId": {
+              "type": "string"
+            },
+            "status": {
+              "enum": [
+                "queued",
+                "running",
+                "waiting-human",
+                "completed",
+                "failed"
+              ]
+            },
+            "startedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "completedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "inputSummary": {
+              "type": "string"
+            },
+            "outputSummary": {
+              "type": "string"
+            },
+            "currentApprovalRequestId": {
+              "type": "string"
+            },
+            "traceCorrelation": {
+              "type": "object"
+            },
+            "complianceProfileSnapshot": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ComplianceProfile"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
           }
         }
       ]
     },
     "ApprovalRequest": {
       "allOf": [
-        { "$ref": "#/$defs/BaseRecord" },
+        {
+          "$ref": "#/$defs/BaseRecord"
+        },
         {
           "type": "object",
           "required": [
@@ -403,27 +845,59 @@
             "status"
           ],
           "properties": {
-            "tenantId": { "type": "string" },
-            "deploymentId": { "type": "string" },
-            "sessionId": { "type": "string" },
-            "checkpointId": { "type": "string" },
-            "reason": { "type": "string" },
-            "requestedBy": { "$ref": "#/$defs/AuditActor" },
-            "status": {
-              "enum": ["pending", "approved", "rejected", "expired", "cancelled"]
+            "tenantId": {
+              "type": "string"
             },
-            "expiresAt": { "type": "string", "format": "date-time" },
-            "resolvedAt": { "type": "string", "format": "date-time" },
-            "resolutionComment": { "type": "string" },
-            "guardrailDefinitionId": { "type": "string" },
-            "policyPackId": { "type": "string" }
+            "deploymentId": {
+              "type": "string"
+            },
+            "sessionId": {
+              "type": "string"
+            },
+            "checkpointId": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "requestedBy": {
+              "$ref": "#/$defs/AuditActor"
+            },
+            "status": {
+              "enum": [
+                "pending",
+                "approved",
+                "rejected",
+                "expired",
+                "cancelled"
+              ]
+            },
+            "expiresAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "resolvedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "resolutionComment": {
+              "type": "string"
+            },
+            "guardrailDefinitionId": {
+              "type": "string"
+            },
+            "policyPackId": {
+              "type": "string"
+            }
           }
         }
       ]
     },
     "RunEvent": {
       "allOf": [
-        { "$ref": "#/$defs/BaseRecord" },
+        {
+          "$ref": "#/$defs/BaseRecord"
+        },
         {
           "type": "object",
           "required": [
@@ -437,9 +911,15 @@
             "payload"
           ],
           "properties": {
-            "tenantId": { "type": "string" },
-            "deploymentId": { "type": "string" },
-            "sessionId": { "type": "string" },
+            "tenantId": {
+              "type": "string"
+            },
+            "deploymentId": {
+              "type": "string"
+            },
+            "sessionId": {
+              "type": "string"
+            },
             "type": {
               "enum": [
                 "run_started",
@@ -451,15 +931,43 @@
                 "policy_decided",
                 "approval_requested",
                 "approval_resolved",
+                "disclosure_presented",
+                "disclosure_acknowledged",
+                "human_review_completed",
+                "output_overridden",
+                "stop_invoked",
                 "run_completed",
                 "run_failed"
               ]
             },
-            "sequence": { "type": "integer", "minimum": 1 },
-            "occurredAt": { "type": "string", "format": "date-time" },
-            "actor": { "$ref": "#/$defs/AuditActor" },
-            "payload": { "type": "object" },
-            "traceCorrelation": { "type": "object" }
+            "sequence": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "actor": {
+              "$ref": "#/$defs/AuditActor"
+            },
+            "payload": {
+              "type": "object"
+            },
+            "traceCorrelation": {
+              "type": "object"
+            },
+            "assertedActor": {
+              "$ref": "#/$defs/AuditActor"
+            },
+            "actorVerification": {
+              "enum": [
+                "system",
+                "authenticated-sdk",
+                "authenticated-operator",
+                "asserted"
+              ]
+            }
           }
         }
       ]
@@ -477,10 +985,18 @@
         "payload"
       ],
       "properties": {
-        "id": { "type": "string" },
-        "tenantId": { "type": "string" },
-        "deploymentId": { "type": "string" },
-        "sessionId": { "type": "string" },
+        "id": {
+          "type": "string"
+        },
+        "tenantId": {
+          "type": "string"
+        },
+        "deploymentId": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        },
         "category": {
           "enum": [
             "tenant",
@@ -493,62 +1009,205 @@
             "runtime"
           ]
         },
-        "action": { "type": "string" },
-        "severity": { "enum": ["info", "warn", "error", "critical"] },
-        "occurredAt": { "type": "string", "format": "date-time" },
-        "actor": { "$ref": "#/$defs/AuditActor" },
-        "payload": { "type": "object" }
+        "action": {
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warn",
+            "error",
+            "critical"
+          ]
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "actor": {
+          "$ref": "#/$defs/AuditActor"
+        },
+        "payload": {
+          "type": "object"
+        },
+        "assertedActor": {
+          "$ref": "#/$defs/AuditActor"
+        },
+        "actorVerification": {
+          "enum": [
+            "system",
+            "authenticated-sdk",
+            "authenticated-operator",
+            "asserted"
+          ]
+        }
       }
     },
     "CipIngestEvent": {
       "oneOf": [
         {
           "type": "object",
-          "required": ["kind", "type"],
+          "required": [
+            "kind",
+            "type"
+          ],
           "properties": {
-            "kind": { "const": "run_event" },
-            "type": { "type": "string" },
-            "actor": { "$ref": "#/$defs/AuditActor" },
-            "payload": { "type": "object" },
-            "traceCorrelation": { "type": "object" },
-            "occurredAt": { "type": "string", "format": "date-time" }
+            "kind": {
+              "const": "run_event"
+            },
+            "type": {
+              "enum": [
+                "run_started",
+                "tool_called",
+                "tool_completed",
+                "handoff_started",
+                "handoff_completed",
+                "guardrail_triggered",
+                "policy_decided",
+                "approval_requested",
+                "approval_resolved",
+                "disclosure_presented",
+                "disclosure_acknowledged",
+                "human_review_completed",
+                "output_overridden",
+                "stop_invoked",
+                "run_completed",
+                "run_failed"
+              ]
+            },
+            "actor": {
+              "$ref": "#/$defs/AuditActor"
+            },
+            "payload": {
+              "type": "object"
+            },
+            "traceCorrelation": {
+              "type": "object"
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "assertedActor": {
+              "$ref": "#/$defs/AuditActor"
+            },
+            "actorVerification": {
+              "enum": [
+                "system",
+                "authenticated-sdk",
+                "authenticated-operator",
+                "asserted"
+              ],
+              "description": "Trusted provenance for the persisted actor. Caller-supplied actor values on generic ingestion are treated as asserted, not verified."
+            }
           }
         },
         {
           "type": "object",
-          "required": ["kind", "category", "action", "actor", "payload"],
+          "required": [
+            "kind",
+            "category",
+            "action",
+            "actor",
+            "payload"
+          ],
           "properties": {
-            "kind": { "const": "audit_event" },
-            "category": { "type": "string" },
-            "action": { "type": "string" },
-            "severity": { "type": "string" },
-            "actor": { "$ref": "#/$defs/AuditActor" },
-            "payload": { "type": "object" },
-            "deploymentId": { "type": "string" },
-            "occurredAt": { "type": "string", "format": "date-time" }
+            "kind": {
+              "const": "audit_event"
+            },
+            "category": {
+              "enum": [
+                "tenant",
+                "connector",
+                "policy",
+                "deployment",
+                "session",
+                "security",
+                "approval",
+                "runtime"
+              ]
+            },
+            "action": {
+              "type": "string"
+            },
+            "severity": {
+              "enum": [
+                "info",
+                "warn",
+                "error",
+                "critical"
+              ]
+            },
+            "actor": {
+              "$ref": "#/$defs/AuditActor"
+            },
+            "payload": {
+              "type": "object"
+            },
+            "deploymentId": {
+              "type": "string"
+            },
+            "occurredAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "assertedActor": {
+              "$ref": "#/$defs/AuditActor"
+            },
+            "actorVerification": {
+              "enum": [
+                "system",
+                "authenticated-sdk",
+                "authenticated-operator",
+                "asserted"
+              ],
+              "description": "Trusted provenance for the persisted actor. Caller-supplied actor values on generic ingestion are treated as asserted, not verified."
+            }
           }
         }
       ]
     },
     "CipEventBatch": {
       "type": "object",
-      "required": ["tenantId", "sessionId", "events"],
+      "required": [
+        "tenantId",
+        "sessionId",
+        "events"
+      ],
       "properties": {
-        "tenantId": { "type": "string" },
-        "sessionId": { "type": "string" },
+        "tenantId": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        },
         "events": {
           "type": "array",
-          "items": { "$ref": "#/$defs/CipIngestEvent" }
+          "items": {
+            "$ref": "#/$defs/CipIngestEvent"
+          }
         }
       }
     },
     "CipIngestReceipt": {
       "type": "object",
-      "required": ["ingestJobId", "acceptedCount", "receivedAt"],
+      "required": [
+        "ingestJobId",
+        "acceptedCount",
+        "receivedAt"
+      ],
       "properties": {
-        "ingestJobId": { "type": "string" },
-        "acceptedCount": { "type": "integer", "minimum": 0 },
-        "receivedAt": { "type": "string", "format": "date-time" }
+        "ingestJobId": {
+          "type": "string"
+        },
+        "acceptedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "receivedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
       }
     },
     "ApiKeyRecord": {
@@ -564,24 +1223,63 @@
         "updatedAt"
       ],
       "properties": {
-        "id": { "type": "string" },
-        "tenantId": { "type": "string" },
-        "name": { "type": "string" },
-        "keyHash": { "type": "string" },
-        "scopes": { "type": "array", "items": { "type": "string" } },
-        "status": { "enum": ["active", "revoked"] },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" },
-        "expiresAt": { "type": "string", "format": "date-time" },
-        "revokedAt": { "type": "string", "format": "date-time" },
-        "lastUsedAt": { "type": "string", "format": "date-time" },
-        "rotatedFromApiKeyId": { "type": "string" },
-        "description": { "type": "string" }
+        "id": {
+          "type": "string"
+        },
+        "tenantId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "keyHash": {
+          "type": "string"
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "enum": [
+            "active",
+            "revoked"
+          ]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expiresAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revokedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "lastUsedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "rotatedFromApiKeyId": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
       }
     },
     "IngestJobRecord": {
       "allOf": [
-        { "$ref": "#/$defs/BaseRecord" },
+        {
+          "$ref": "#/$defs/BaseRecord"
+        },
         {
           "type": "object",
           "required": [
@@ -594,15 +1292,41 @@
             "availableAt"
           ],
           "properties": {
-            "tenantId": { "type": "string" },
-            "sessionId": { "type": "string" },
-            "jobType": { "const": "event_batch" },
-            "payload": { "$ref": "#/$defs/CipEventBatch" },
-            "status": { "enum": ["queued", "processing", "completed", "failed", "dead_letter"] },
-            "attemptCount": { "type": "integer", "minimum": 0 },
-            "availableAt": { "type": "string", "format": "date-time" },
-            "lastError": { "type": "string" },
-            "idempotencyKey": { "type": "string" }
+            "tenantId": {
+              "type": "string"
+            },
+            "sessionId": {
+              "type": "string"
+            },
+            "jobType": {
+              "const": "event_batch"
+            },
+            "payload": {
+              "$ref": "#/$defs/CipEventBatch"
+            },
+            "status": {
+              "enum": [
+                "queued",
+                "processing",
+                "completed",
+                "failed",
+                "dead_letter"
+              ]
+            },
+            "attemptCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "availableAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "lastError": {
+              "type": "string"
+            },
+            "idempotencyKey": {
+              "type": "string"
+            }
           }
         }
       ]
@@ -620,19 +1344,38 @@
         "createdAt"
       ],
       "properties": {
-        "id": { "type": "string" },
-        "originalJobId": { "type": "string" },
-        "tenantId": { "type": "string" },
-        "sessionId": { "type": "string" },
-        "jobType": { "const": "event_batch" },
-        "payload": { "$ref": "#/$defs/CipEventBatch" },
-        "lastError": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "id": {
+          "type": "string"
+        },
+        "originalJobId": {
+          "type": "string"
+        },
+        "tenantId": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "jobType": {
+          "const": "event_batch"
+        },
+        "payload": {
+          "$ref": "#/$defs/CipEventBatch"
+        },
+        "lastError": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
       }
     },
     "EvidenceBundle": {
       "allOf": [
-        { "$ref": "#/$defs/BaseRecord" },
+        {
+          "$ref": "#/$defs/BaseRecord"
+        },
         {
           "type": "object",
           "required": [
@@ -646,43 +1389,430 @@
             "summary",
             "runEventIds",
             "auditEventIds",
-            "generatedAt"
+            "generatedAt",
+            "disclosureRecordIds",
+            "humanReviewIds",
+            "complianceArtifactIds"
           ],
           "properties": {
-            "tenantId": { "type": "string" },
-            "deploymentId": { "type": "string" },
-            "sessionId": { "type": "string" },
-            "agentBlueprintId": { "type": "string" },
-            "agentBlueprintVersion": { "type": "string" },
+            "tenantId": {
+              "type": "string"
+            },
+            "deploymentId": {
+              "type": "string"
+            },
+            "sessionId": {
+              "type": "string"
+            },
+            "agentBlueprintId": {
+              "type": "string"
+            },
+            "agentBlueprintVersion": {
+              "type": "string"
+            },
             "policyPackVersions": {
               "type": "array",
-              "items": { "$ref": "#/$defs/DependencyVersionReference" }
+              "items": {
+                "$ref": "#/$defs/DependencyVersionReference"
+              }
             },
             "guardrailVersions": {
               "type": "array",
-              "items": { "$ref": "#/$defs/DependencyVersionReference" }
+              "items": {
+                "$ref": "#/$defs/DependencyVersionReference"
+              }
             },
-            "summary": { "type": "string" },
-            "runEventIds": { "type": "array", "items": { "type": "string" } },
-            "auditEventIds": { "type": "array", "items": { "type": "string" } },
-            "generatedAt": { "type": "string", "format": "date-time" }
+            "summary": {
+              "type": "string"
+            },
+            "runEventIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "auditEventIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "generatedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "disclosureRecordIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "humanReviewIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "complianceArtifactIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "complianceProfile": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/ComplianceProfile"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
           }
         }
       ]
     },
     "GuardrailDefinition": {
       "allOf": [
-        { "$ref": "#/$defs/BaseRecord" },
+        {
+          "$ref": "#/$defs/BaseRecord"
+        },
         {
           "type": "object",
-          "required": ["key", "version", "name", "configuration", "status"],
+          "required": [
+            "key",
+            "version",
+            "name",
+            "configuration",
+            "status"
+          ],
           "properties": {
-            "key": { "type": "string" },
-            "version": { "type": "string" },
-            "name": { "type": "string" },
-            "description": { "type": "string" },
-            "configuration": { "type": "object" },
-            "status": { "enum": ["draft", "active", "retired"] }
+            "key": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "configuration": {
+              "type": "object"
+            },
+            "status": {
+              "enum": [
+                "draft",
+                "active",
+                "retired"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "HighRiskBasis": {
+      "type": "object",
+      "required": [
+        "annex",
+        "category",
+        "rationale"
+      ],
+      "properties": {
+        "annex": {
+          "enum": [
+            "annex-i",
+            "annex-iii"
+          ]
+        },
+        "category": {
+          "type": "string"
+        },
+        "rationale": {
+          "type": "string"
+        }
+      }
+    },
+    "ComplianceTransparency": {
+      "type": "object",
+      "required": [
+        "required",
+        "noticeText",
+        "placement",
+        "requiresAcknowledgement"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "noticeText": {
+          "type": "string"
+        },
+        "placement": {
+          "enum": [
+            "banner-and-first-message"
+          ]
+        },
+        "requiresAcknowledgement": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ComplianceOversight": {
+      "type": "object",
+      "required": [
+        "required",
+        "requireApprovalBeforeCompletion",
+        "minimumHumanReviewers",
+        "stopMechanismRequired"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "requireApprovalBeforeCompletion": {
+          "type": "boolean"
+        },
+        "minimumHumanReviewers": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stopMechanismRequired": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ComplianceLogging": {
+      "type": "object",
+      "required": [
+        "requireVerifiedActors",
+        "retentionDays"
+      ],
+      "properties": {
+        "requireVerifiedActors": {
+          "type": "boolean"
+        },
+        "retentionDays": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "ComplianceProfile": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/BaseRecord"
+        },
+        {
+          "type": "object",
+          "required": [
+            "tenantId",
+            "deploymentId",
+            "regime",
+            "servesEuUsers",
+            "intendedPurpose",
+            "riskTier",
+            "transparency",
+            "oversight",
+            "logging"
+          ],
+          "properties": {
+            "tenantId": {
+              "type": "string"
+            },
+            "deploymentId": {
+              "type": "string"
+            },
+            "regime": {
+              "enum": [
+                "eu-ai-act"
+              ]
+            },
+            "servesEuUsers": {
+              "type": "boolean"
+            },
+            "intendedPurpose": {
+              "type": "string"
+            },
+            "riskTier": {
+              "enum": [
+                "minimal",
+                "limited",
+                "high-risk",
+                "prohibited",
+                "unclassified"
+              ]
+            },
+            "highRiskBasis": {
+              "$ref": "#/$defs/HighRiskBasis"
+            },
+            "transparency": {
+              "$ref": "#/$defs/ComplianceTransparency"
+            },
+            "oversight": {
+              "$ref": "#/$defs/ComplianceOversight"
+            },
+            "logging": {
+              "$ref": "#/$defs/ComplianceLogging"
+            }
+          }
+        }
+      ]
+    },
+    "ComplianceArtifact": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/BaseRecord"
+        },
+        {
+          "type": "object",
+          "required": [
+            "tenantId",
+            "deploymentId",
+            "kind",
+            "status",
+            "owner",
+            "summary"
+          ],
+          "properties": {
+            "tenantId": {
+              "type": "string"
+            },
+            "deploymentId": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "technical_documentation",
+                "fundamental_rights_impact_assessment",
+                "conformity_assessment",
+                "eu_declaration_of_conformity",
+                "eu_database_registration",
+                "post_market_monitoring_plan",
+                "serious_incident_record"
+              ]
+            },
+            "status": {
+              "enum": [
+                "draft",
+                "approved",
+                "filed",
+                "not_applicable",
+                "expired"
+              ]
+            },
+            "owner": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "externalRef": {
+              "type": "string"
+            },
+            "dueAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "completedAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        }
+      ]
+    },
+    "DisclosureRecord": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/BaseRecord"
+        },
+        {
+          "type": "object",
+          "required": [
+            "tenantId",
+            "deploymentId",
+            "sessionId",
+            "disclosureVersion",
+            "surface",
+            "presentedAt"
+          ],
+          "properties": {
+            "tenantId": {
+              "type": "string"
+            },
+            "deploymentId": {
+              "type": "string"
+            },
+            "sessionId": {
+              "type": "string"
+            },
+            "disclosureVersion": {
+              "type": "string"
+            },
+            "surface": {
+              "enum": [
+                "banner",
+                "first_message",
+                "banner_and_first_message"
+              ]
+            },
+            "presentedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "acknowledgedAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        }
+      ]
+    },
+    "HumanReviewRecord": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/BaseRecord"
+        },
+        {
+          "type": "object",
+          "required": [
+            "tenantId",
+            "deploymentId",
+            "sessionId",
+            "reviewer",
+            "decision",
+            "reviewedAt"
+          ],
+          "properties": {
+            "tenantId": {
+              "type": "string"
+            },
+            "deploymentId": {
+              "type": "string"
+            },
+            "sessionId": {
+              "type": "string"
+            },
+            "reviewer": {
+              "$ref": "#/$defs/AuditActor"
+            },
+            "decision": {
+              "enum": [
+                "approved",
+                "rejected"
+              ]
+            },
+            "comment": {
+              "type": "string"
+            },
+            "reviewedAt": {
+              "type": "string",
+              "format": "date-time"
+            }
           }
         }
       ]

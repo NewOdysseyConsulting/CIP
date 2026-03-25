@@ -1,6 +1,6 @@
 # CIP
 
-Common Infrastructure Protocol, or CIP, is New Odyssey's infrastructure layer for building governed enterprise AI agents.
+Common Infrastructure Protocol, or CIP, is New Odyssey's infrastructure layer for building governed enterprise AI agents and compliance-enabling control planes.
 
 CIP is SDK-first. It gives you the APIs, data model, repository layer, policy hooks, audit trail, approval persistence, and control-plane contracts needed to build agents on top of the OpenAI Agents SDK without hard-coupling your application to one runtime or one deployment model.
 
@@ -12,6 +12,8 @@ This repository currently includes:
 - Postgres and in-memory repository implementations
 - immutable blueprint versioning, deployment lifecycle state, replay, and evidence bundles
 - human-in-the-loop approval persistence
+- deployment-scoped compliance profiles, disclosure records, and human review records
+- high-risk compliance artifact tracking and deployment activation gates
 - policy and guardrail infrastructure
 - connector contracts and stubs for Workday and Dynamics 365
 - a generic HTTP JSON connector backend and connector plugin registries
@@ -27,6 +29,7 @@ CIP is the infrastructure around agent execution:
 - deployment metadata and rollout control
 - audit events and evidence projection
 - approval checkpoints and resolution history
+- compliance profiles, disclosure evidence, and human review evidence
 - connector inventory and quota coordination
 - policy-pack and guardrail attachment
 - local and remote control-plane transports
@@ -41,6 +44,7 @@ CIP is not:
 - a hosted multi-tenant SaaS in this repo
 - a replacement for the OpenAI Agents SDK runtime
 - a finished connector suite for every target platform
+- a blanket legal certification or an end-to-end EU AI Act compliance claim
 
 Pantheon and Phoenix consume CIP. They are not implemented here.
 
@@ -318,16 +322,36 @@ Relevant docs:
 
 In this repo, OpenAI Agents SDK is the runtime adapter layer. CIP owns the infrastructure state around that runtime.
 
+## Compliance Positioning
+
+CIP should be positioned as a **compliance-enabling control plane**, not as a blanket “AI Act compliant” product.
+
+This repo now includes primitives for:
+
+- deployment-scoped EU AI Act compliance profiles
+- high-risk deployment activation gating based on required compliance artifacts
+- disclosure recording for user-facing AI interactions
+- human review recording and completion gating
+- trusted provenance fields that separate verified actors from client-asserted actors
+- replay and evidence bundles enriched with compliance state
+
+This repo does **not** render banners or first-message disclosures in your UI. Your application must still present those notices to end users and call the CIP disclosure endpoint to record that they were shown.
+
+See [`docs/eu-ai-act.md`](docs/eu-ai-act.md) for the implementation guide.
+
 ## Hosted API Surface
 
 The hosted reference implementation exposes REST endpoints under `/v1`, including:
 
 - `POST /v1/sessions`
 - `POST /v1/sessions/{sessionId}/events:enqueue`
+- `POST /v1/sessions/{sessionId}:record-disclosure`
+- `POST /v1/sessions/{sessionId}:record-human-review`
 - `GET /v1/ingest-jobs/{jobId}`
 - `POST /v1/sessions/{sessionId}:complete`
 - `GET /v1/sessions/{sessionId}/replay`
 - `GET /v1/evidence-bundles/{sessionId}`
+- `GET /v1/deployments/{deploymentId}/compliance-profile`
 - `POST /v1/approval-requests/{approvalRequestId}:resolve`
 - `POST /v1/deployments/{deploymentId}:transition`
 - `POST /v1/deployments/{deploymentId}:rollback`
@@ -339,6 +363,7 @@ Admin and operational endpoints under `/v1/admin` include:
 
 - tenants, connector definitions, credential bindings, connector bindings
 - policy packs, guardrail definitions, agent blueprints, deployments
+- deployment compliance profiles and compliance artifacts
 - API key issue, rotate, and revoke
 - dead-letter listing and requeue
 - retention cleanup
@@ -348,6 +373,7 @@ See:
 
 - [`schemas/cip-admin-api.openapi.json`](schemas/cip-admin-api.openapi.json)
 - [`schemas/cip-control-plane.schema.json`](schemas/cip-control-plane.schema.json)
+- [`docs/eu-ai-act.md`](docs/eu-ai-act.md)
 
 ## Monorepo Layout
 

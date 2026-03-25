@@ -33,6 +33,9 @@ export class CipRunTracker {
       | "enqueueEvents"
       | "requestApproval"
       | "resolveApproval"
+      | "getComplianceProfile"
+      | "recordDisclosure"
+      | "recordHumanReview"
       | "completeSession"
       | "getIngestJob"
       | "getReplay"
@@ -95,6 +98,22 @@ export class CipRunTracker {
 
   async requestApproval(input: RequestApprovalRequest) {
     return this.client.requestApproval(input);
+  }
+
+  async getComplianceProfile(deploymentId: string) {
+    return this.client.getComplianceProfile(deploymentId);
+  }
+
+  async recordDisclosure(
+    input: import("./types.js").RecordDisclosureRequest,
+  ) {
+    return this.client.recordDisclosure(input);
+  }
+
+  async recordHumanReview(
+    input: import("./types.js").RecordHumanReviewRequest,
+  ) {
+    return this.client.recordHumanReview(input);
   }
 
   async trackRuntimeResult(input: {

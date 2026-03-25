@@ -22,6 +22,24 @@ export class CipClient {
     return this.transport.resolveApproval(...args);
   }
 
+  getComplianceProfile(
+    ...args: Parameters<CipControlPlaneTransport["getComplianceProfile"]>
+  ) {
+    return this.transport.getComplianceProfile(...args);
+  }
+
+  recordDisclosure(
+    ...args: Parameters<CipControlPlaneTransport["recordDisclosure"]>
+  ) {
+    return this.transport.recordDisclosure(...args);
+  }
+
+  recordHumanReview(
+    ...args: Parameters<CipControlPlaneTransport["recordHumanReview"]>
+  ) {
+    return this.transport.recordHumanReview(...args);
+  }
+
   completeSession(...args: Parameters<CipControlPlaneTransport["completeSession"]>) {
     return this.transport.completeSession(...args);
   }
@@ -188,6 +206,30 @@ export class CipAdminClient {
 
   getDeployment(...args: Parameters<CipAdminTransport["getDeployment"]>) {
     return this.transport.getDeployment(...args);
+  }
+
+  getComplianceProfile(
+    ...args: Parameters<CipAdminTransport["getComplianceProfile"]>
+  ) {
+    return this.transport.getComplianceProfile(...args);
+  }
+
+  upsertComplianceProfile(
+    ...args: Parameters<CipAdminTransport["upsertComplianceProfile"]>
+  ) {
+    return this.transport.upsertComplianceProfile(...args);
+  }
+
+  listComplianceArtifacts(
+    ...args: Parameters<CipAdminTransport["listComplianceArtifacts"]>
+  ) {
+    return this.transport.listComplianceArtifacts(...args);
+  }
+
+  createComplianceArtifact(
+    ...args: Parameters<CipAdminTransport["createComplianceArtifact"]>
+  ) {
+    return this.transport.createComplianceArtifact(...args);
   }
 
   issueApiKey(...args: Parameters<CipAdminTransport["issueApiKey"]>) {

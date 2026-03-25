@@ -4,13 +4,17 @@ import type {
   AgentBlueprint,
   ApprovalRequest,
   AuditEvent,
+  ComplianceArtifact,
+  ComplianceProfile,
   ConnectorBinding,
   ConnectorDefinition,
   ConnectorRateBucket,
   CredentialBinding,
+  DisclosureRecord,
   DeploymentRecord,
   EvidenceBundle,
   GuardrailDefinition,
+  HumanReviewRecord,
   PolicyPack,
   RunEvent,
   RunSession,
@@ -20,13 +24,17 @@ import type {
   AgentBlueprintFilter,
   ApprovalRequestFilter,
   AuditEventFilter,
+  ComplianceArtifactFilter,
+  ComplianceProfileFilter,
   ConnectorBindingFilter,
   ConnectorDefinitionFilter,
   ConnectorRateBucketFilter,
   CredentialBindingFilter,
+  DisclosureRecordFilter,
   DeploymentFilter,
   EvidenceBundleFilter,
   GuardrailDefinitionFilter,
+  HumanReviewRecordFilter,
   PolicyPackFilter,
   RunEventFilter,
   RunSessionFilter,
@@ -258,8 +266,12 @@ create table if not exists policy_packs (like tenants including all);
 create table if not exists guardrail_definitions (like tenants including all);
 create table if not exists agent_blueprints (like tenants including all);
 create table if not exists deployments (like tenants including all);
+create table if not exists compliance_profiles (like tenants including all);
+create table if not exists compliance_artifacts (like tenants including all);
 create table if not exists run_sessions (like tenants including all);
 create table if not exists approval_requests (like tenants including all);
+create table if not exists disclosure_records (like tenants including all);
+create table if not exists human_review_records (like tenants including all);
 create table if not exists run_events (like tenants including all);
 create table if not exists evidence_bundles (like tenants including all);
 create table if not exists audit_events (like tenants including all);
@@ -430,6 +442,31 @@ export const createPostgresCipRepositories = (
     },
     filterToColumns,
   }),
+  complianceProfiles: new JsonbMutableRepository<
+    ComplianceProfile,
+    ComplianceProfileFilter
+  >(db, {
+    tableName: "compliance_profiles",
+    indexes: {
+      tenant_id: (record) => record.tenantId,
+      deployment_id: (record) => record.deploymentId,
+      status: (record) => record.riskTier,
+    },
+    filterToColumns,
+  }),
+  complianceArtifacts: new JsonbMutableRepository<
+    ComplianceArtifact,
+    ComplianceArtifactFilter
+  >(db, {
+    tableName: "compliance_artifacts",
+    indexes: {
+      tenant_id: (record) => record.tenantId,
+      deployment_id: (record) => record.deploymentId,
+      key: (record) => record.kind,
+      status: (record) => record.status,
+    },
+    filterToColumns,
+  }),
   runSessions: new JsonbMutableRepository<RunSession, RunSessionFilter>(db, {
     tableName: "run_sessions",
     indexes: {
@@ -450,6 +487,33 @@ export const createPostgresCipRepositories = (
       deployment_id: (record) => record.deploymentId,
       session_id: (record) => record.sessionId,
       status: (record) => record.status,
+    },
+    filterToColumns,
+  }),
+  disclosureRecords: new JsonbMutableRepository<
+    DisclosureRecord,
+    DisclosureRecordFilter
+  >(db, {
+    tableName: "disclosure_records",
+    indexes: {
+      tenant_id: (record) => record.tenantId,
+      deployment_id: (record) => record.deploymentId,
+      session_id: (record) => record.sessionId,
+      occurred_at: (record) => record.presentedAt,
+    },
+    filterToColumns,
+  }),
+  humanReviewRecords: new JsonbMutableRepository<
+    HumanReviewRecord,
+    HumanReviewRecordFilter
+  >(db, {
+    tableName: "human_review_records",
+    indexes: {
+      tenant_id: (record) => record.tenantId,
+      deployment_id: (record) => record.deploymentId,
+      session_id: (record) => record.sessionId,
+      status: (record) => record.decision,
+      occurred_at: (record) => record.reviewedAt,
     },
     filterToColumns,
   }),

@@ -2,13 +2,17 @@ import type {
   AgentBlueprint,
   ApprovalRequest,
   AuditEvent,
+  ComplianceArtifact,
+  ComplianceProfile,
   ConnectorBinding,
   ConnectorDefinition,
   ConnectorRateBucket,
   CredentialBinding,
+  DisclosureRecord,
   DeploymentRecord,
   EvidenceBundle,
   GuardrailDefinition,
+  HumanReviewRecord,
   PolicyPack,
   RunEvent,
   RunSession,
@@ -18,13 +22,17 @@ import type {
   AgentBlueprintFilter,
   ApprovalRequestFilter,
   AuditEventFilter,
+  ComplianceArtifactFilter,
+  ComplianceProfileFilter,
   ConnectorBindingFilter,
   ConnectorDefinitionFilter,
   ConnectorRateBucketFilter,
   CredentialBindingFilter,
+  DisclosureRecordFilter,
   DeploymentFilter,
   EvidenceBundleFilter,
   GuardrailDefinitionFilter,
+  HumanReviewRecordFilter,
   PolicyPackFilter,
   RunEventFilter,
   RunSessionFilter,
@@ -68,8 +76,24 @@ export interface CipRepositories {
   >;
   agentBlueprints: MutableRepository<AgentBlueprint, AgentBlueprintFilter>;
   deployments: MutableRepository<DeploymentRecord, DeploymentFilter>;
+  complianceProfiles: MutableRepository<
+    ComplianceProfile,
+    ComplianceProfileFilter
+  >;
+  complianceArtifacts: MutableRepository<
+    ComplianceArtifact,
+    ComplianceArtifactFilter
+  >;
   runSessions: MutableRepository<RunSession, RunSessionFilter>;
   approvalRequests: MutableRepository<ApprovalRequest, ApprovalRequestFilter>;
+  disclosureRecords: MutableRepository<
+    DisclosureRecord,
+    DisclosureRecordFilter
+  >;
+  humanReviewRecords: MutableRepository<
+    HumanReviewRecord,
+    HumanReviewRecordFilter
+  >;
   evidenceBundles: MutableRepository<EvidenceBundle, EvidenceBundleFilter>;
   connectorRateBuckets: MutableRepository<
     ConnectorRateBucket,

@@ -28,6 +28,31 @@ const humanApprovalCheckpointSchema = z.object({
   expiresAt: z.string().optional(),
 });
 
+const highRiskBasisSchema = z.object({
+  annex: z.enum(["annex-i", "annex-iii"]),
+  category: z.string().min(1),
+  rationale: z.string().min(1),
+});
+
+const complianceTransparencySchema = z.object({
+  required: z.boolean(),
+  noticeText: z.string(),
+  placement: z.literal("banner-and-first-message"),
+  requiresAcknowledgement: z.boolean(),
+});
+
+const complianceOversightSchema = z.object({
+  required: z.boolean(),
+  requireApprovalBeforeCompletion: z.boolean(),
+  minimumHumanReviewers: z.number().int().min(0),
+  stopMechanismRequired: z.boolean(),
+});
+
+const complianceLoggingSchema = z.object({
+  requireVerifiedActors: z.boolean(),
+  retentionDays: z.number().int().min(1),
+});
+
 const runtimeProfileSchema = z.object({
   provider: z.enum(["openai-agents-sdk", "anthropic", "custom"]),
   modelProfile: z.enum(["default", "reasoning", "fast"]),
@@ -46,10 +71,19 @@ const runEventEnvelopeSchema = z.object({
     "policy_decided",
     "approval_requested",
     "approval_resolved",
+    "disclosure_presented",
+    "disclosure_acknowledged",
+    "human_review_completed",
+    "output_overridden",
+    "stop_invoked",
     "run_completed",
     "run_failed",
   ]),
   actor: auditActorSchema.optional(),
+  assertedActor: auditActorSchema.optional(),
+  actorVerification: z
+    .enum(["system", "authenticated-sdk", "authenticated-operator", "asserted"])
+    .optional(),
   payload: z.record(z.string(), z.unknown()).optional(),
   traceCorrelation: traceCorrelationSchema.optional(),
   occurredAt: z.string().optional(),
@@ -70,6 +104,10 @@ const auditEventEnvelopeSchema = z.object({
   action: z.string().min(1),
   severity: z.enum(["info", "warn", "error", "critical"]).optional(),
   actor: auditActorSchema,
+  assertedActor: auditActorSchema.optional(),
+  actorVerification: z
+    .enum(["system", "authenticated-sdk", "authenticated-operator", "asserted"])
+    .optional(),
   payload: z.record(z.string(), z.unknown()),
   deploymentId: z.string().optional(),
   occurredAt: z.string().optional(),
@@ -88,6 +126,58 @@ export const completeRunSessionInputSchema = z.object({
   sessionId: z.string().min(1),
   status: z.enum(["completed", "failed"]),
   outputSummary: z.string().optional(),
+});
+
+export const upsertComplianceProfileInputSchema = z.object({
+  id: z.string().optional(),
+  deploymentId: z.string().min(1),
+  regime: z.literal("eu-ai-act"),
+  servesEuUsers: z.boolean(),
+  intendedPurpose: z.string().min(1),
+  riskTier: z.enum(["minimal", "limited", "high-risk", "prohibited", "unclassified"]),
+  highRiskBasis: highRiskBasisSchema.optional(),
+  transparency: complianceTransparencySchema.partial().optional(),
+  oversight: complianceOversightSchema.partial().optional(),
+  logging: complianceLoggingSchema.partial().optional(),
+});
+
+export const createComplianceArtifactInputSchema = z.object({
+  id: z.string().optional(),
+  deploymentId: z.string().min(1),
+  kind: z.enum([
+    "technical_documentation",
+    "fundamental_rights_impact_assessment",
+    "conformity_assessment",
+    "eu_declaration_of_conformity",
+    "eu_database_registration",
+    "post_market_monitoring_plan",
+    "serious_incident_record",
+  ]),
+  status: z.enum(["draft", "approved", "filed", "not_applicable", "expired"]),
+  owner: z.string().min(1),
+  summary: z.string().min(1),
+  externalRef: z.string().optional(),
+  dueAt: z.string().optional(),
+  completedAt: z.string().optional(),
+});
+
+export const recordDisclosureInputSchema = z.object({
+  id: z.string().optional(),
+  sessionId: z.string().min(1),
+  disclosureVersion: z.string().min(1),
+  surface: z.enum(["banner", "first_message", "banner_and_first_message"]),
+  presentedAt: z.string().min(1),
+  acknowledgedAt: z.string().optional(),
+});
+
+export const recordHumanReviewInputSchema = z.object({
+  id: z.string().optional(),
+  sessionId: z.string().min(1),
+  reviewerId: z.string().optional(),
+  decision: z.enum(["approved", "rejected"]),
+  comment: z.string().optional(),
+  reviewedAt: z.string().min(1),
+  actor: auditActorSchema.optional(),
 });
 
 export const cipEventBatchSchema = z.object({

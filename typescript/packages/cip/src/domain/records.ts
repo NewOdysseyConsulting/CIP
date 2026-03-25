@@ -35,6 +35,13 @@ export type RunSessionStatus =
   | "waiting-human"
   | "completed"
   | "failed";
+export type ComplianceRegime = "eu-ai-act";
+export type ComplianceRiskTier =
+  | "minimal"
+  | "limited"
+  | "high-risk"
+  | "prohibited"
+  | "unclassified";
 export type ApprovalRequestStatus =
   | "pending"
   | "approved"
@@ -51,8 +58,36 @@ export type RunEventType =
   | "policy_decided"
   | "approval_requested"
   | "approval_resolved"
+  | "disclosure_presented"
+  | "disclosure_acknowledged"
+  | "human_review_completed"
+  | "output_overridden"
+  | "stop_invoked"
   | "run_completed"
   | "run_failed";
+export type ActorVerification =
+  | "system"
+  | "authenticated-sdk"
+  | "authenticated-operator"
+  | "asserted";
+export type ComplianceArtifactKind =
+  | "technical_documentation"
+  | "fundamental_rights_impact_assessment"
+  | "conformity_assessment"
+  | "eu_declaration_of_conformity"
+  | "eu_database_registration"
+  | "post_market_monitoring_plan"
+  | "serious_incident_record";
+export type ComplianceArtifactStatus =
+  | "draft"
+  | "approved"
+  | "filed"
+  | "not_applicable"
+  | "expired";
+export type DisclosureSurface =
+  | "banner"
+  | "first_message"
+  | "banner_and_first_message";
 export type GuardrailKey =
   | "tenant_boundary"
   | "pii_boundary"
@@ -74,6 +109,31 @@ export interface TraceCorrelation {
   spanId?: string;
   conversationId?: string;
   responseId?: string;
+}
+
+export interface HighRiskBasis {
+  annex: "annex-i" | "annex-iii";
+  category: string;
+  rationale: string;
+}
+
+export interface ComplianceTransparency {
+  required: boolean;
+  noticeText: string;
+  placement: "banner-and-first-message";
+  requiresAcknowledgement: boolean;
+}
+
+export interface ComplianceOversight {
+  required: boolean;
+  requireApprovalBeforeCompletion: boolean;
+  minimumHumanReviewers: number;
+  stopMechanismRequired: boolean;
+}
+
+export interface ComplianceLogging {
+  requireVerifiedActors: boolean;
+  retentionDays: number;
 }
 
 export interface TenantRecord extends BaseRecord {
@@ -209,6 +269,31 @@ export interface DeploymentRecord extends BaseRecord {
   tags: string[];
 }
 
+export interface ComplianceProfile extends BaseRecord {
+  tenantId: string;
+  deploymentId: string;
+  regime: ComplianceRegime;
+  servesEuUsers: boolean;
+  intendedPurpose: string;
+  riskTier: ComplianceRiskTier;
+  highRiskBasis?: HighRiskBasis;
+  transparency: ComplianceTransparency;
+  oversight: ComplianceOversight;
+  logging: ComplianceLogging;
+}
+
+export interface ComplianceArtifact extends BaseRecord {
+  tenantId: string;
+  deploymentId: string;
+  kind: ComplianceArtifactKind;
+  status: ComplianceArtifactStatus;
+  owner: string;
+  summary: string;
+  externalRef?: string;
+  dueAt?: IsoTimestamp;
+  completedAt?: IsoTimestamp;
+}
+
 export interface RunSession extends BaseRecord {
   tenantId: string;
   deploymentId: string;
@@ -220,6 +305,7 @@ export interface RunSession extends BaseRecord {
   outputSummary?: string;
   currentApprovalRequestId?: string;
   traceCorrelation?: TraceCorrelation;
+  complianceProfileSnapshot?: ComplianceProfile | null;
 }
 
 export interface AuditActor {
@@ -245,6 +331,8 @@ export interface AuditEvent {
   severity: "info" | "warn" | "error" | "critical";
   occurredAt: IsoTimestamp;
   actor: AuditActor;
+  assertedActor?: AuditActor;
+  actorVerification: ActorVerification;
   payload: Record<string, unknown>;
 }
 
@@ -280,8 +368,30 @@ export interface RunEvent extends BaseRecord {
   sequence: number;
   occurredAt: IsoTimestamp;
   actor: AuditActor;
+  assertedActor?: AuditActor;
+  actorVerification: ActorVerification;
   payload: Record<string, unknown>;
   traceCorrelation?: TraceCorrelation;
+}
+
+export interface DisclosureRecord extends BaseRecord {
+  tenantId: string;
+  deploymentId: string;
+  sessionId: string;
+  disclosureVersion: string;
+  surface: DisclosureSurface;
+  presentedAt: IsoTimestamp;
+  acknowledgedAt?: IsoTimestamp;
+}
+
+export interface HumanReviewRecord extends BaseRecord {
+  tenantId: string;
+  deploymentId: string;
+  sessionId: string;
+  reviewer: AuditActor;
+  decision: "approved" | "rejected";
+  comment?: string;
+  reviewedAt: IsoTimestamp;
 }
 
 export interface EvidenceBundle extends BaseRecord {
@@ -295,6 +405,10 @@ export interface EvidenceBundle extends BaseRecord {
   summary: string;
   runEventIds: string[];
   auditEventIds: string[];
+  complianceProfile?: ComplianceProfile | null;
+  disclosureRecordIds: string[];
+  humanReviewIds: string[];
+  complianceArtifactIds: string[];
   generatedAt: IsoTimestamp;
 }
 

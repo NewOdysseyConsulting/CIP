@@ -2,9 +2,13 @@ import type {
   AgentBlueprint,
   ApprovalRequest,
   AuditEvent,
+  ComplianceArtifact,
+  ComplianceProfile,
   ConnectorRateBucket,
+  DisclosureRecord,
   EvidenceBundle,
   GuardrailDefinition,
+  HumanReviewRecord,
   PolicyDomain,
   RunEvent,
   ConnectorBinding,
@@ -69,6 +73,20 @@ export interface DeploymentFilter {
   status?: DeploymentRecord["status"];
 }
 
+export interface ComplianceProfileFilter {
+  tenantId?: string;
+  deploymentId?: string;
+  regime?: ComplianceProfile["regime"];
+  riskTier?: ComplianceProfile["riskTier"];
+}
+
+export interface ComplianceArtifactFilter {
+  tenantId?: string;
+  deploymentId?: string;
+  kind?: ComplianceArtifact["kind"];
+  status?: ComplianceArtifact["status"];
+}
+
 export interface RunSessionFilter {
   tenantId?: string;
   deploymentId?: string;
@@ -102,6 +120,19 @@ export interface RunEventFilter {
   deploymentId?: string;
   sessionId?: string;
   type?: RunEvent["type"];
+}
+
+export interface DisclosureRecordFilter {
+  tenantId?: string;
+  deploymentId?: string;
+  sessionId?: string;
+}
+
+export interface HumanReviewRecordFilter {
+  tenantId?: string;
+  deploymentId?: string;
+  sessionId?: string;
+  decision?: HumanReviewRecord["decision"];
 }
 
 export interface EvidenceBundleFilter {

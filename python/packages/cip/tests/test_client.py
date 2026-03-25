@@ -7,20 +7,25 @@ from dataclasses import asdict
 import httpx
 
 from new_odyssey_cip import (
+    AuditActor,
     CipAdminClient,
     CipAuthError,
     CipClient,
     CipEventBatch,
     CipRunTracker,
     CompleteRunSessionInput,
+    CreateComplianceArtifactInput,
     CreateApiKeyRequest,
     HttpCipAdminTransport,
     HttpCipControlPlaneTransport,
     LocalCipControlPlaneTransport,
+    RecordDisclosureInput,
+    RecordHumanReviewInput,
     RegisterTenantInput,
     RevokeApiKeyRequest,
     RotateApiKeyRequest,
     StartRunSessionInput,
+    UpsertComplianceProfileInput,
 )
 
 from test_control_plane import create_workday_security_fixture
@@ -76,6 +81,9 @@ class CipClientTransportTests(unittest.TestCase):
             [event.type for event in replay.run_events],
             ["run_started", "tool_called", "run_completed"],
         )
+        self.assertEqual(replay.run_events[1].actor.id, "local-cip-transport")
+        self.assertEqual(replay.run_events[1].actor_verification, "asserted")
+        self.assertEqual(replay.run_events[1].asserted_actor.id, "python-sdk")
 
     def test_http_transport_maps_remote_contracts(self) -> None:
         fixture = create_workday_security_fixture()
@@ -83,11 +91,53 @@ class CipClientTransportTests(unittest.TestCase):
         tenant = fixture["tenant"]
         deployment = fixture["deployment"]
 
+        profile = control_plane.upsert_compliance_profile(
+            UpsertComplianceProfileInput(
+                deployment_id=deployment.id,
+                regime="eu-ai-act",
+                serves_eu_users=True,
+                intended_purpose="Customer support chatbot",
+                risk_tier="limited",
+                transparency={
+                    "required": True,
+                    "notice_text": "You are interacting with AI.",
+                    "placement": "banner-and-first-message",
+                    "requires_acknowledgement": False,
+                },
+                oversight={
+                    "required": False,
+                    "require_approval_before_completion": False,
+                    "minimum_human_reviewers": 0,
+                    "stop_mechanism_required": False,
+                },
+                logging={
+                    "require_verified_actors": True,
+                    "retention_days": 365,
+                },
+            )
+        )
         session = control_plane.start_run_session(
             StartRunSessionInput(
                 tenant_id=tenant.id,
                 deployment_id=deployment.id,
                 input_summary="Prepare mock remote replay.",
+            )
+        )
+        disclosure = control_plane.record_disclosure(
+            RecordDisclosureInput(
+                session_id=session.id,
+                disclosure_version="v1",
+                surface="banner_and_first_message",
+                presented_at="2026-03-18T10:00:00+00:00",
+            )
+        )
+        review = control_plane.record_human_review(
+            RecordHumanReviewInput(
+                session_id=session.id,
+                decision="approved",
+                reviewed_at="2026-03-18T10:01:00+00:00",
+                comment="Reviewed for transport mapping.",
+                actor=AuditActor(type="human", id="operator-1"),
             )
         )
         completed = control_plane.complete_run_session(
@@ -123,6 +173,8 @@ class CipClientTransportTests(unittest.TestCase):
                     200,
                     json=_camelize(asdict(session)),
                 )
+            if path == f"/v1/deployments/{deployment.id}/compliance-profile":
+                return httpx.Response(200, json=_camelize(asdict(profile)))
             if path == f"/v1/sessions/{session.id}/replay":
                 return httpx.Response(
                     200,
@@ -133,6 +185,16 @@ class CipClientTransportTests(unittest.TestCase):
                             "approval_requests": [
                                 asdict(approval) for approval in replay.approval_requests
                             ],
+                            "disclosure_records": [
+                                asdict(record) for record in replay.disclosure_records
+                            ],
+                            "human_reviews": [
+                                asdict(record) for record in replay.human_reviews
+                            ],
+                            "compliance_profile": None
+                            if replay.compliance_profile is None
+                            else asdict(replay.compliance_profile),
+                            "compliance_artifact_ids": replay.compliance_artifact_ids,
                             "evidence_bundle": None
                             if replay.evidence_bundle is None
                             else asdict(replay.evidence_bundle),
@@ -140,6 +202,10 @@ class CipClientTransportTests(unittest.TestCase):
                         }
                     ),
                 )
+            if path == f"/v1/sessions/{session.id}:record-disclosure":
+                return httpx.Response(200, json=_camelize(asdict(disclosure)))
+            if path == f"/v1/sessions/{session.id}:record-human-review":
+                return httpx.Response(200, json=_camelize(asdict(review)))
             if path == f"/v1/evidence-bundles/{session.id}":
                 return httpx.Response(
                     200,
@@ -181,6 +247,23 @@ class CipClientTransportTests(unittest.TestCase):
                 input_summary="Remote session create.",
             )
         )
+        remote_profile = client.get_compliance_profile(deployment.id)
+        remote_disclosure = client.record_disclosure(
+            RecordDisclosureInput(
+                session_id=session.id,
+                disclosure_version="v1",
+                surface="banner_and_first_message",
+                presented_at="2026-03-18T10:00:00+00:00",
+            )
+        )
+        remote_review = client.record_human_review(
+            RecordHumanReviewInput(
+                session_id=session.id,
+                decision="approved",
+                reviewed_at="2026-03-18T10:01:00+00:00",
+                comment="Reviewed for transport mapping.",
+            )
+        )
         remote_completed = client.complete_session(
             CompleteRunSessionInput(
                 session_id=session.id,
@@ -197,9 +280,16 @@ class CipClientTransportTests(unittest.TestCase):
         waited_job = tracker.wait_for_ingest("job-1")
 
         self.assertEqual(remote_session.id, session.id)
+        self.assertEqual(remote_profile.id, profile.id)
+        self.assertEqual(remote_disclosure.id, disclosure.id)
+        self.assertEqual(remote_review.id, review.id)
         self.assertEqual(remote_completed.status, "completed")
         self.assertEqual(remote_replay.reconstructed_status, "completed")
+        self.assertEqual(remote_replay.compliance_profile.id, profile.id)
+        self.assertEqual(remote_replay.disclosure_records[0].id, disclosure.id)
+        self.assertEqual(remote_replay.human_reviews[0].id, review.id)
         self.assertEqual(remote_evidence.agent_blueprint_version, evidence.agent_blueprint_version)
+        self.assertEqual(remote_evidence.compliance_profile.id, profile.id)
         self.assertEqual(remote_job.id, "job-1")
         self.assertEqual(remote_tenant.id, tenant.id)
         self.assertEqual(remote_deployments[0].id, deployment.id)
@@ -207,8 +297,44 @@ class CipClientTransportTests(unittest.TestCase):
 
     def test_http_admin_transport_maps_bootstrap_contracts(self) -> None:
         fixture = create_workday_security_fixture()
+        control_plane = fixture["control_plane"]
         tenant = fixture["tenant"]
         deployment = fixture["deployment"]
+
+        profile = control_plane.upsert_compliance_profile(
+            UpsertComplianceProfileInput(
+                deployment_id=deployment.id,
+                regime="eu-ai-act",
+                serves_eu_users=True,
+                intended_purpose="Legal intake workflow",
+                risk_tier="high-risk",
+                transparency={
+                    "required": True,
+                    "notice_text": "You are interacting with AI.",
+                    "placement": "banner-and-first-message",
+                    "requires_acknowledgement": True,
+                },
+                oversight={
+                    "required": True,
+                    "require_approval_before_completion": True,
+                    "minimum_human_reviewers": 1,
+                    "stop_mechanism_required": True,
+                },
+                logging={
+                    "require_verified_actors": True,
+                    "retention_days": 3650,
+                },
+            )
+        )
+        artifact = control_plane.create_compliance_artifact(
+            CreateComplianceArtifactInput(
+                deployment_id=deployment.id,
+                kind="technical_documentation",
+                status="approved",
+                owner="legal",
+                summary="Technical documentation approved.",
+            )
+        )
 
         api_key_record = {
             "id": "api-key-1",
@@ -228,6 +354,12 @@ class CipClientTransportTests(unittest.TestCase):
                 return httpx.Response(200, json=_camelize(asdict(tenant)))
             if path == "/v1/admin/deployments":
                 return httpx.Response(200, json=[_camelize(asdict(deployment))])
+            if path == f"/v1/admin/deployments/{deployment.id}/compliance-profile":
+                return httpx.Response(200, json=_camelize(asdict(profile)))
+            if path == f"/v1/admin/deployments/{deployment.id}/compliance-artifacts":
+                if request.method == "GET":
+                    return httpx.Response(200, json=[_camelize(asdict(artifact))])
+                return httpx.Response(200, json=_camelize(asdict(artifact)))
             if path == "/v1/admin/api-keys" and request.method == "POST":
                 return httpx.Response(
                     200,
@@ -276,6 +408,42 @@ class CipClientTransportTests(unittest.TestCase):
             )
         )
         deployments = client.list_deployments()
+        profile_response = client.get_compliance_profile(deployment.id)
+        updated_profile = client.upsert_compliance_profile(
+            UpsertComplianceProfileInput(
+                deployment_id=deployment.id,
+                regime="eu-ai-act",
+                serves_eu_users=True,
+                intended_purpose="Legal intake workflow",
+                risk_tier="high-risk",
+                transparency={
+                    "required": True,
+                    "notice_text": "You are interacting with AI.",
+                    "placement": "banner-and-first-message",
+                    "requires_acknowledgement": True,
+                },
+                oversight={
+                    "required": True,
+                    "require_approval_before_completion": True,
+                    "minimum_human_reviewers": 1,
+                    "stop_mechanism_required": True,
+                },
+                logging={
+                    "require_verified_actors": True,
+                    "retention_days": 3650,
+                },
+            )
+        )
+        artifacts = client.list_compliance_artifacts(deployment.id)
+        created_artifact = client.create_compliance_artifact(
+            CreateComplianceArtifactInput(
+                deployment_id=deployment.id,
+                kind="technical_documentation",
+                status="approved",
+                owner="legal",
+                summary="Technical documentation approved.",
+            )
+        )
         issued = client.issue_api_key(
             CreateApiKeyRequest(
                 tenant_id=tenant.id,
@@ -288,6 +456,10 @@ class CipClientTransportTests(unittest.TestCase):
 
         self.assertEqual(created_tenant.id, tenant.id)
         self.assertEqual(deployments[0].id, deployment.id)
+        self.assertEqual(profile_response.id, profile.id)
+        self.assertEqual(updated_profile.id, profile.id)
+        self.assertEqual(artifacts[0].id, artifact.id)
+        self.assertEqual(created_artifact.id, artifact.id)
         self.assertEqual(issued.record.id, "api-key-1")
         self.assertEqual(issued.plain_text_key, "cip_test_secret")
         self.assertEqual(rotated.record.name, "rotated key")
