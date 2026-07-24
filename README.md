@@ -41,7 +41,7 @@ The open-source surface of CIP:
 | **Reference adapters** | in the SDKs | OpenAI Agents SDK runtime adapter, HTTP JSON connector backend, Workday/Dynamics 365 stubs, AWS Secrets Manager backend |
 | **Conformance tools** | [`typescript/packages/conformance`](typescript/packages/conformance) | `@new-odyssey/cip-conformance`: runnable suite + CLI for validating platform implementations |
 
-The [`lupercal/`](lupercal/README.md) directory stages the commercial platform (Romulus, Remus, hosted services, infra) ahead of extraction into its private repository. It is **not** part of the CIP open-source surface.
+The commercial implementation — Lupercal's hosted services, Romulus's durable Postgres state layer, Remus's policy engine, and the deployment infrastructure — lives in the private Lupercal repository, not here. This repository contains only the open protocol surface.
 
 ## The protocol in one paragraph
 
@@ -153,14 +153,7 @@ CIP carries the *evidence shapes* that compliance regimes need — disclosure re
 │       └── conformance       # @new-odyssey/cip-conformance
 ├── python
 │   └── packages
-│       ├── cip               # new-odyssey-cip
-│       └── lupercal          # new-odyssey-lupercal (staged commercial modules)
-├── lupercal                  # Lupercal platform (staged for private extraction)
-│   ├── romulus               # @new-odyssey/romulus — durable state
-│   ├── remus                 # @new-odyssey/remus — policy engine
-│   ├── services              # lupercal-api, lupercal-worker, lupercal-migrate
-│   ├── sql                   # Postgres migrations
-│   └── infra                 # Helm chart + Terraform module
+│       └── cip               # new-odyssey-cip
 └── docs                      # Compatibility and compliance guides
 ```
 

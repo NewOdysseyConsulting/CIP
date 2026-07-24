@@ -35,8 +35,6 @@ jobs:
           . .venv/bin/activate
           python -m pip install --upgrade pip build twine
           python -m pip install -e python/packages/cip
-          python -m pip install --no-deps -e python/packages/lupercal
-          python -m pip install psycopg
 
       - name: Build and test
         run: |

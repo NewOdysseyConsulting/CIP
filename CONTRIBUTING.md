@@ -36,13 +36,10 @@ npm run build
 npm test
 ```
 
-Optional infrastructure checks:
+Protocol conformance check against the reference implementation:
 
 ```bash
-helm template lupercal lupercal/infra/helm/lupercal >/dev/null
-cd lupercal/infra/terraform/kubernetes/lupercal
-terraform init -backend=false
-terraform validate
+npx cip-conformance
 ```
 
 ## Change guidelines

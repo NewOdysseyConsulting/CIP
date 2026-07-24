@@ -1,6 +1,6 @@
 # Compatibility
 
-This matrix describes the currently tested prerelease baseline for CIP and the staged Lupercal implementation.
+This matrix describes the currently tested prerelease baseline for CIP.
 
 | Component | Supported baseline |
 | --- | --- |
@@ -11,8 +11,6 @@ This matrix describes the currently tested prerelease baseline for CIP and the s
 | Python SDK package | `new-odyssey-cip==0.3.0a*` |
 | OpenAI Agents SDK (TypeScript) | version range declared in [`typescript/packages/cip/package.json`](../typescript/packages/cip/package.json) |
 | OpenAI Agents SDK (Python) | version range declared in [`python/packages/cip/pyproject.toml`](../python/packages/cip/pyproject.toml) |
-| Postgres (Lupercal/Romulus) | `15+` recommended |
-| Kubernetes | `1.29+` recommended for the Helm/Terraform deployment path |
 
 ## Stability
 
@@ -23,5 +21,5 @@ This matrix describes the currently tested prerelease baseline for CIP and the s
 ## Upgrade expectation
 
 - Treat alpha-to-alpha upgrades as planned engineering work, not transparent patch upgrades.
-- Read [CHANGELOG.md](../CHANGELOG.md) before upgrading — the 0.3 line moved Postgres persistence and the policy engine out of the SDKs into the Lupercal packages and renamed service environment variables to `LUPERCAL_*`.
+- Read [CHANGELOG.md](../CHANGELOG.md) before upgrading — the 0.3 line removed Postgres persistence, the deterministic policy engine, and the deployable control-plane services from this repository; they continue inside the Lupercal platform.
 - Re-run your connector, policy, and approval-flow tests — and the conformance suite against any platform you operate — after each prerelease update.

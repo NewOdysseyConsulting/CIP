@@ -24,25 +24,17 @@ jobs:
         with:
           python-version: "3.12"
 
-      - uses: azure/setup-helm@v4
-
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_wrapper: false
-
       - name: Install monorepo dependencies
         run: npm ci
 
-      - name: Install Python packages
+      - name: Install Python package
         run: |
           python -m venv .venv
           . .venv/bin/activate
           python -m pip install --upgrade pip
           python -m pip install -e python/packages/cip
-          python -m pip install --no-deps -e python/packages/lupercal
-          python -m pip install psycopg
 
-      - name: Build packages and services
+      - name: Build packages
         run: npm run build
 
       - name: Run test suites
@@ -52,18 +44,3 @@ jobs:
         run: |
           npm pack --workspace @new-odyssey/cip --dry-run
           npm pack --workspace @new-odyssey/cip-conformance --dry-run
-
-      - name: Render Helm chart
-        run: helm template lupercal lupercal/infra/helm/lupercal >/dev/null
-
-      - name: Validate Terraform module
-        working-directory: lupercal/infra/terraform/kubernetes/lupercal
-        run: |
-          terraform init -backend=false
-          terraform validate
-
-      - name: Build Lupercal service images
-        run: |
-          docker build -f lupercal/services/api/Dockerfile .
-          docker build -f lupercal/services/worker/Dockerfile .
-          docker build -f lupercal/services/migrate/Dockerfile .

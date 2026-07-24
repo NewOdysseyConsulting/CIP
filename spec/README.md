@@ -4,7 +4,7 @@
 
 CIP is the open protocol for governed agent operations. It defines how agent platforms, runtimes, and tools describe and exchange the state of governed runs: who an agent is, where a workflow stands, what policy decided, who approved what, what evidence backs an outcome, and how all of it correlates across systems.
 
-CIP does not execute anything. Execution, durability, and enforcement belong to the platform that implements the protocol — for example [Lupercal](../lupercal/README.md), New Odyssey's production control platform, whose Romulus subsystem owns state and recovery and whose Remus subsystem owns policy and approvals. Any system that speaks these shapes and honors the normative requirements below can interoperate: producers (agent runtimes such as Pegasus agents) emit CIP objects, and consumers (control planes, audit sinks, review tooling) store, gate, and project them.
+CIP does not execute anything. Execution, durability, and enforcement belong to the platform that implements the protocol — for example Lupercal, New Odyssey's production control platform (maintained in its own repository), whose Romulus subsystem owns state and recovery and whose Remus subsystem owns policy and approvals. Any system that speaks these shapes and honors the normative requirements below can interoperate: producers (agent runtimes such as Pegasus agents) emit CIP objects, and consumers (control planes, audit sinks, review tooling) store, gate, and project them.
 
 ## Interchange domains
 

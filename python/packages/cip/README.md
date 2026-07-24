@@ -14,7 +14,7 @@ This package provides the protocol types, client surface, and reference implemen
 - `ConnectorBackendRegistry`, `HttpJsonConnectorBackend`
 - OpenAI Agents SDK reference runtime adapter
 
-Durable Postgres persistence and the deterministic policy engine live in the `new-odyssey-lupercal` package (`new_odyssey_lupercal.romulus`, `new_odyssey_lupercal.remus`), not in this SDK.
+Durable persistence and the production policy engine live in Lupercal — New Odyssey's commercial platform, maintained in its own repository — not in this SDK.
 
 Install from this monorepo:
 
