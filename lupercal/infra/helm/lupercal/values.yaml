@@ -1,0 +1,49 @@
+nameOverride: ""
+fullnameOverride: ""
+
+images:
+  api:
+    repository: ghcr.io/new-odyssey/lupercal-api
+    tag: "0.3.0-alpha.0"
+    pullPolicy: IfNotPresent
+  worker:
+    repository: ghcr.io/new-odyssey/lupercal-worker
+    tag: "0.3.0-alpha.0"
+    pullPolicy: IfNotPresent
+  migrate:
+    repository: ghcr.io/new-odyssey/lupercal-migrate
+    tag: "0.3.0-alpha.0"
+    pullPolicy: IfNotPresent
+
+replicaCount:
+  api: 1
+  worker: 1
+
+service:
+  type: ClusterIP
+  port: 8080
+
+config:
+  operatorAuthMode: hs256
+  operatorIssuer: lupercal-control-plane
+  operatorAudience: lupercal-operators
+  operatorJwksUrl: ""
+  workerPollIntervalMs: "1000"
+  workerMaxAttempts: "5"
+  retentionWindowHours: "168"
+  retentionSweepEveryLoops: "300"
+  runMigrationsOnStartup: "false"
+
+existingSecrets:
+  postgres: lupercal-postgres
+  operator: lupercal-operator
+
+resources:
+  api: {}
+  worker: {}
+  migrate: {}
+
+ingress:
+  enabled: false
+  className: ""
+  hosts: []

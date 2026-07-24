@@ -1,7 +1,7 @@
 {
   "name": "@new-odyssey/cip",
-  "version": "0.2.0-alpha.0",
-  "description": "Common Infrastructure Protocol for enterprise AI agents.",
+  "version": "0.3.0-alpha.0",
+  "description": "CIP, the open protocol for governed agent operations: protocol types, clients, and the reference implementation.",
   "type": "module",
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
@@ -24,7 +24,6 @@
   "dependencies": {
     "@aws-sdk/client-secrets-manager": "^3.901.0",
     "@openai/agents": "^0.7.2",
-    "pg": "^8.16.3",
     "zod": "^4.1.12"
   },
   "publishConfig": {
@@ -33,7 +32,6 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
-    "@types/pg": "^8.15.6",
     "typescript": "^5.9.0"
   }
 }

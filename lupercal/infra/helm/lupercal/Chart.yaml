@@ -1,0 +1,6 @@
+apiVersion: v2
+name: lupercal
+description: Helm chart for Lupercal, the control platform that implements the CIP protocol
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

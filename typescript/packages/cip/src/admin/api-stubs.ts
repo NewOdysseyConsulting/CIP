@@ -6,7 +6,7 @@ import { workdayConnectorHealthcheck } from "../connectors/workday-stub.js";
 import type {
   PolicyEvaluationContext,
   PolicyEvaluator,
-} from "../policy/evaluator.js";
+} from "../policy/types.js";
 import type { CipRepositories } from "../repositories/ports.js";
 import type { CipControlPlane } from "../services/cip-control-plane.js";
 

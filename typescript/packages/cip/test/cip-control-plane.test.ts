@@ -7,7 +7,6 @@ import {
   CipControlPlaneError,
   CipAdminClient,
   CipAuthError,
-  DeterministicPolicyEvaluator,
   EnvironmentSecretResolver,
   HttpCipAdminTransport,
   HttpJsonConnectorBackend,
@@ -19,7 +18,6 @@ import {
   ConnectorBackendRegistry,
   createAdminApiHandlers,
   createCipControlPlaneAgent,
-  createDefaultGuardrailCatalog,
   createInMemoryCipRepositories,
   dynamics365ConnectorManifest,
   workdayConnectorManifest,
@@ -82,13 +80,22 @@ const createWorkdaySecurityFixture = async () => {
     config: { tenantAlias: "acme_prod" },
   });
 
-  const [defaultGuardrail] = createDefaultGuardrailCatalog();
-  assert.ok(defaultGuardrail);
   const guardrail = await controlPlane.publishGuardrailDefinition({
-    key: defaultGuardrail.key,
-    version: defaultGuardrail.version,
-    name: defaultGuardrail.name,
-    configuration: defaultGuardrail.configuration,
+    key: "tenant_boundary",
+    version: "1.0.0",
+    name: "Tenant Boundary",
+    configuration: {
+      clauses: [
+        {
+          id: "tenant-boundary",
+          name: "tenant-boundary",
+          match: "all",
+          conditions: [
+            { path: "tenant.allowed", operator: "eq", value: true },
+          ],
+        },
+      ],
+    },
   });
 
   const policyPack = await controlPlane.publishPolicyPack({
@@ -441,9 +448,20 @@ test("compliance profiles gate high-risk activation and disclosure requirements"
   assert.equal(evidence?.complianceArtifactIds.length, 6);
 });
 
-test("policy evaluation, admin stubs, secrets, and runtime adapters behave deterministically", async () => {
+test("admin stubs, secrets, and runtime adapters accept a pluggable policy evaluator", async () => {
   const fixture = await createWorkdaySecurityFixture();
-  const evaluator = new DeterministicPolicyEvaluator();
+  const evaluator = {
+    evaluate: () => ({
+      action: "flag" as const,
+      matchedRuleIds: ["least-privilege"],
+      failedClauseIds: [],
+      triggeredGuardrailIds: [fixture.guardrail.id],
+      explanation: "Stub evaluator decision.",
+      evidenceRefs: [
+        { type: "policy-pack" as const, id: fixture.policyPack.id },
+      ],
+    }),
+  };
   const handlers = createAdminApiHandlers(
     fixture.controlPlane,
     fixture.repositories,
@@ -457,18 +475,7 @@ test("policy evaluation, admin stubs, secrets, and runtime adapters behave deter
     "aws:test/secret": "stubbed-secret",
   });
 
-  const evaluation = evaluator.evaluate(
-    fixture.policyPack,
-    {
-      tenantId: fixture.tenant.id,
-      deploymentId: fixture.deployment.id,
-      facts: {
-        permissions: { delta: 2 },
-        tenant: { allowed: true },
-      },
-    },
-    [fixture.guardrail],
-  );
+  const evaluation = evaluator.evaluate();
 
   const healthcheck = await handlers.postConnectorHealthcheck("workday");
   const policyResult = await handlers.evaluatePolicy(fixture.policyPack.id, {

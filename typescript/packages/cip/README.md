@@ -1,22 +1,20 @@
 # @new-odyssey/cip
 
-TypeScript SDK for the Common Infrastructure Protocol.
+TypeScript SDK for CIP, the open protocol for governed agent operations.
 
-This package provides the core CIP library surface for Node.js teams:
+This package provides the protocol types, client surface, and reference implementation for Node.js teams:
 
-- `CipControlPlane`
-- `CipClient`
-- `CipAdminClient`
-- `LocalCipControlPlaneTransport`
-- `HttpCipControlPlaneTransport`
-- `HttpCipAdminTransport`
+- protocol types for every CIP interchange domain (see [`spec/`](../../../spec/README.md))
+- `CipClient` and `CipAdminClient`
+- `LocalCipControlPlaneTransport`, `HttpCipControlPlaneTransport`, `HttpCipAdminTransport`
+- `CipControlPlane` + in-memory repositories: the non-durable reference implementation
 - `CipRunTracker`
-- `SecretBackendRegistry`
-- `AwsSecretsManagerSecretBackend`
-- `ConnectorBackendRegistry`
-- `HttpJsonConnectorBackend`
-- in-memory and Postgres repository factories
-- OpenAI Agents SDK runtime integration
+- the `PolicyEvaluator` interface (engines such as Lupercal's Remus implement it)
+- `SecretBackendRegistry`, `AwsSecretsManagerSecretBackend`
+- `ConnectorBackendRegistry`, `HttpJsonConnectorBackend`
+- OpenAI Agents SDK reference runtime adapter
+
+Durable Postgres persistence and the deterministic policy engine live in the Lupercal platform packages (`@new-odyssey/romulus`, `@new-odyssey/remus`), not in this SDK.
 
 From this monorepo:
 
@@ -42,4 +40,4 @@ const client = new CipClient(
 );
 ```
 
-For the full repo guide, hosted control-plane setup, and architecture notes, see the [root README](../../../README.md).
+For the protocol specification, conformance tooling, and architecture notes, see the [root README](../../../README.md) and [`spec/`](../../../spec/README.md).

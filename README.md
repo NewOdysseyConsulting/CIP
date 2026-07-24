@@ -1,102 +1,69 @@
 # CIP
 
-Common Infrastructure Protocol, or CIP, is New Odyssey's infrastructure layer for building governed enterprise AI agents and compliance-enabling control planes.
+CIP is the open protocol for governed agent operations. Lupercal is the production platform that implements it.
 
-CIP is SDK-first. It gives you the APIs, data model, repository layer, policy hooks, audit trail, approval persistence, and control-plane contracts needed to build agents on top of the OpenAI Agents SDK without hard-coupling your application to one runtime or one deployment model.
+CIP defines how agent platforms, runtimes, and tools describe and exchange the state of governed runs:
 
-This repository currently includes:
+- agent identity and capabilities
+- workflow state and transitions
+- policy decisions
+- approval requests and responses
+- evidence and citations
+- audit events
+- task delegation
+- execution outcomes
+- cross-system trace identifiers
 
-- a TypeScript SDK for Node.js teams
-- a Python SDK for backend and orchestration teams
-- a deployable TypeScript control-plane API, worker, and migration runner
-- Postgres and in-memory repository implementations
-- immutable blueprint versioning, deployment lifecycle state, replay, and evidence bundles
-- human-in-the-loop approval persistence
-- deployment-scoped compliance profiles, disclosure records, and human review records
-- high-risk compliance artifact tracking and deployment activation gates
-- policy and guardrail infrastructure
-- connector contracts and stubs for Workday and Dynamics 365
-- a generic HTTP JSON connector backend and connector plugin registries
-- AWS Secrets Manager, environment, and stub secret backends
-- local and hosted admin clients in both SDKs
-- Helm and Terraform assets for self-hosted control-plane deployments
+CIP does not own a runtime. Any system that speaks these shapes and satisfies the [conformance requirements](spec/conformance.md) can interoperate.
 
-## What CIP Is
+```text
+CIP
+Open interoperability protocol
+        ↓ implemented by
+Lupercal
+Commercial control platform
+        ├── Romulus: state and execution
+        └── Remus: policy and rules
+```
 
-CIP is the infrastructure around agent execution:
+For Pegasus, that means: Pegasus agents use CIP to represent governed runs and evidence; Lupercal executes and controls those runs; Romulus knows where each workflow is and how it recovers; Remus decides what is permitted and when approval is required.
 
-- tenant-aware state
-- deployment metadata and rollout control
-- audit events and evidence projection
-- approval checkpoints and resolution history
-- compliance profiles, disclosure evidence, and human review evidence
-- connector inventory and quota coordination
-- policy-pack and guardrail attachment
-- local and remote control-plane transports
+## What's in this repository
 
-OpenAI Agents SDK still runs the agent. CIP records, governs, and exposes the infrastructure state around that execution.
+The open-source surface of CIP:
 
-## What CIP Is Not
+| Area | Where | What |
+| --- | --- | --- |
+| **Specification** | [`spec/`](spec/README.md) | The protocol: interchange domains, state machines, normative requirements |
+| **Schemas** | [`schemas/`](schemas) | JSON Schema for protocol objects and the OpenAPI description of the `/v1` HTTP binding |
+| **TypeScript SDK** | [`typescript/packages/cip`](typescript/packages/cip) | `@new-odyssey/cip`: protocol types, clients, transports, reference implementation |
+| **Python SDK** | [`python/packages/cip`](python/packages/cip) | `new-odyssey-cip`: the same surface with Python conventions |
+| **Reference adapters** | in the SDKs | OpenAI Agents SDK runtime adapter, HTTP JSON connector backend, Workday/Dynamics 365 stubs, AWS Secrets Manager backend |
+| **Conformance tools** | [`typescript/packages/conformance`](typescript/packages/conformance) | `@new-odyssey/cip-conformance`: runnable suite + CLI for validating platform implementations |
 
-CIP is not:
+The [`lupercal/`](lupercal/README.md) directory stages the commercial platform (Romulus, Remus, hosted services, infra) ahead of extraction into its private repository. It is **not** part of the CIP open-source surface.
 
-- a product-specific agent implementation
-- a hosted multi-tenant SaaS in this repo
-- a replacement for the OpenAI Agents SDK runtime
-- a finished connector suite for every target platform
-- a blanket legal certification or an end-to-end EU AI Act compliance claim
+## The protocol in one paragraph
 
-Pantheon and Phoenix consume CIP. They are not implemented here.
+A **tenant** deploys a versioned **agent blueprint** as a **deployment**. Runs execute as **sessions** that move `queued → running → waiting-human → completed/failed`, emitting an append-only, sequenced stream of **run events**. **Policy packs** and **guardrails** are evaluated into citable **policy decisions**; escalations become **approval requests** that block the session until a verified human resolves them. Everything a run did is projected into an **evidence bundle** naming exact dependency versions, backed by tenant-scoped **audit events** with explicit actor verification, and correlated across systems via **trace identifiers**. Full detail: [`spec/README.md`](spec/README.md).
 
-## Current Status
+## Quick start
 
-This repository is beyond the phase-1 foundation. It now includes most of the prerelease implementation for phases 2 through 4:
-
-- a self-hosted TypeScript control plane with runtime, admin, bootstrap, and operational APIs
-- TypeScript and Python SDKs with local and hosted transports
-- public admin clients for tenant/bootstrap workflows
-- API-key issuance, rotation, revocation, ingest-job inspection, dead-letter requeue, and retention cleanup
-- JWT operator auth with `hs256` dev mode and `jwks-rs256` production mode
-- extension infrastructure for secret backends and connector backends
-
-Still prerelease:
-
-- Workday and Dynamics 365 remain stub connectors in this repo
-- the public contracts should still be treated as alpha
-- stable `v1` compatibility guarantees are not in place yet
-
-## Quick Start
-
-### Prerequisites
-
-- Node.js `>=22`
-- Python `>=3.10`
-- Postgres for hosted control-plane mode
-
-### Install From Source
-
-TypeScript workspace:
+Prerequisites: Node.js `>=22`, Python `>=3.10`.
 
 ```bash
 npm install
 npm run build --workspace @new-odyssey/cip
 ```
 
-Python workspace:
-
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -e python/packages/cip
 ```
 
-Current package names:
+### TypeScript
 
-- TypeScript: `@new-odyssey/cip`
-- Python: `new-odyssey-cip`
-
-## TypeScript SDK Example
-
-Local mode keeps everything in process. This is the simplest way to embed CIP into a library or service.
+Local mode embeds the non-durable reference implementation — ideal for development, tests, and conformance work:
 
 ```ts
 import {
@@ -108,54 +75,27 @@ import {
 
 const repositories = createInMemoryCipRepositories();
 const controlPlane = new CipControlPlane(repositories);
-
 const client = new CipClient(
-  new LocalCipControlPlaneTransport({
-    controlPlane,
-    repositories,
-  }),
+  new LocalCipControlPlaneTransport({ controlPlane, repositories }),
 );
-
-// In a real application, you would register tenants, blueprints,
-// connectors, and deployments before starting sessions.
 ```
 
-Remote mode points the SDK at a hosted CIP control plane:
+Remote mode points the same client at any CIP-conformant platform (such as Lupercal):
 
 ```ts
-import {
-  CipClient,
-  HttpCipControlPlaneTransport,
-} from "@new-odyssey/cip";
+import { CipClient, HttpCipControlPlaneTransport } from "@new-odyssey/cip";
 
 const client = new CipClient(
   new HttpCipControlPlaneTransport({
     baseUrl: "https://cip.example.com",
     apiKey: process.env.CIP_API_KEY,
-    operatorToken: process.env.CIP_OPERATOR_TOKEN,
   }),
 );
 ```
 
-If you want CIP to track runtime lifecycle around an OpenAI Agents SDK run, use `CipRunTracker`.
+Admin/bootstrap flows use `CipAdminClient` with `HttpCipAdminTransport`; runtime lifecycle tracking around an OpenAI Agents SDK run uses `CipRunTracker`.
 
-Admin/bootstrap flows use the hosted admin transport:
-
-```ts
-import {
-  CipAdminClient,
-  HttpCipAdminTransport,
-} from "@new-odyssey/cip";
-
-const admin = new CipAdminClient(
-  new HttpCipAdminTransport({
-    baseUrl: "https://cip.example.com",
-    operatorToken: process.env.CIP_OPERATOR_TOKEN,
-  }),
-);
-```
-
-## Python SDK Example
+### Python
 
 ```python
 from new_odyssey_cip import (
@@ -167,287 +107,81 @@ from new_odyssey_cip import (
 
 repositories = create_in_memory_cip_repositories()
 control_plane = CipControlPlane(repositories)
-
-client = CipClient(
-    LocalCipControlPlaneTransport(control_plane, repositories)
-)
+client = CipClient(LocalCipControlPlaneTransport(control_plane, repositories))
 ```
 
-Remote mode is the same shape:
+Remote mode mirrors TypeScript: `HttpCipControlPlaneTransport(base_url, api_key=..., operator_token=...)`.
 
-```python
-from new_odyssey_cip import CipClient, HttpCipControlPlaneTransport
+## Checking conformance
 
-client = CipClient(
-    HttpCipControlPlaneTransport(
-        "https://cip.example.com",
-        api_key="cip_sdk_key",
-        operator_token="operator_token",
-    )
-)
-```
-
-Hosted admin flows are also available in Python:
-
-```python
-from new_odyssey_cip import CipAdminClient, HttpCipAdminTransport
-
-admin = CipAdminClient(
-    HttpCipAdminTransport(
-        "https://cip.example.com",
-        operator_token="operator-token",
-    )
-)
-```
-
-## Deployable Control Plane
-
-The deployable control plane is the self-hosted reference implementation of the CIP APIs.
-
-Services in this repo:
-
-- `@new-odyssey/cip-control-plane-api`
-- `@new-odyssey/cip-control-plane-worker`
-- `@new-odyssey/cip-control-plane-migrate`
-
-### Required Environment Variables
-
-API service:
-
-- `CIP_DATABASE_URL`
-- `CIP_OPERATOR_AUTH_MODE`
-- either `CIP_OPERATOR_SHARED_SECRET` for `hs256` mode or `CIP_OPERATOR_JWKS_URL` for `jwks-rs256` mode
-
-Optional API service variables:
-
-- `HOST`
-- `PORT`
-- `CIP_OPERATOR_ISSUER`
-- `CIP_OPERATOR_AUDIENCE`
-- `CIP_RUN_MIGRATIONS_ON_STARTUP=false`
-
-Worker:
-
-- `CIP_DATABASE_URL`
-- `CIP_WORKER_POLL_INTERVAL_MS`
-- `CIP_WORKER_MAX_ATTEMPTS`
-- `CIP_RETENTION_WINDOW_HOURS`
-- `CIP_RETENTION_SWEEP_EVERY_LOOPS`
-
-### Local Hosted Quickstart
-
-1. Install dependencies and build the TypeScript workspaces.
+Run the suite against the bundled reference implementation:
 
 ```bash
-npm install
-npm run build:ts
+npx cip-conformance
 ```
 
-2. Set the minimum control-plane environment.
+Or against a hosted platform:
 
 ```bash
-export CIP_DATABASE_URL=postgres://postgres:postgres@localhost:5432/cip
-export CIP_OPERATOR_AUTH_MODE=hs256
-export CIP_OPERATOR_SHARED_SECRET=replace-me
+npx cip-conformance --base-url https://cip.example.com --api-key $CIP_API_KEY --operator-token $CIP_OPERATOR_TOKEN
 ```
 
-3. Run migrations.
+Checks cover session lifecycle, terminal immutability, event ordering, ingest idempotency, approval flow, evidence bundles, replay determinism, and audit provenance. See [`spec/conformance.md`](spec/conformance.md).
 
-```bash
-npm run start --workspace @new-odyssey/cip-control-plane-migrate -- migrate
-```
+## HTTP binding
 
-4. Seed an initial tenant if you want a clean bootstrap from the CLI.
+CIP-conformant platforms expose REST endpoints under `/v1` (sessions, event ingest, approvals, disclosures, human reviews, replay, evidence bundles, deployments, audit events) and operator endpoints under `/v1/admin`. The binding is described by:
 
-```bash
-echo '{"slug":"acme","displayName":"Acme","productTier":"pantheon","platforms":["workday"],"regions":["eu-west-2"]}' \
-  | npm run start --workspace @new-odyssey/cip-control-plane-migrate -- seed-tenant --json -
-```
+- [`schemas/cip-control-plane.schema.json`](schemas/cip-control-plane.schema.json) — protocol object schemas
+- [`schemas/cip-admin-api.openapi.json`](schemas/cip-admin-api.openapi.json) — endpoint description
 
-5. Start the API.
+Lupercal's hosted API service is the production implementation of this binding; the repository's in-memory implementation is the reference.
 
-```bash
-npm run start --workspace @new-odyssey/cip-control-plane-api
-```
+## Compliance positioning
 
-6. Start the worker in a separate shell.
+CIP carries the *evidence shapes* that compliance regimes need — disclosure records, human review records, compliance profiles and artifacts, verified actor provenance — and conformant platforms enforce the associated gates (e.g. refusing to complete oversight-gated sessions). This enables compliance workflows; it is not a blanket "AI Act compliant" claim, and applications must still present disclosures in their own UI. See [`docs/eu-ai-act.md`](docs/eu-ai-act.md).
 
-```bash
-export CIP_DATABASE_URL=postgres://postgres:postgres@localhost:5432/cip
-npm run start --workspace @new-odyssey/cip-control-plane-worker
-```
-
-### Bootstrap CLI
-
-The migration package also acts as the self-hosted bootstrap CLI:
-
-- `migrate`
-- `seed-tenant --json <path|->`
-- `issue-api-key --json <path|->`
-- `revoke-api-key --api-key-id <id>`
-- `publish-bootstrap-resources --json <path|->`
-
-## Public SDK Surface
-
-The main SDK entry points are:
-
-- `CipControlPlane`
-- `CipClient`
-- `CipAdminClient`
-- `LocalCipControlPlaneTransport`
-- `HttpCipControlPlaneTransport`
-- `HttpCipAdminTransport`
-- `CipRunTracker`
-- `OpenAIAgentsRuntimeAdapter`
-- `SecretBackendRegistry`
-- `AwsSecretsManagerSecretBackend`
-- `ConnectorBackendRegistry`
-- `HttpJsonConnectorBackend`
-- `createInMemoryCipRepositories`
-- `createPostgresCipRepositories`
-
-The Python package exposes the same concepts with Python naming conventions.
-
-## OpenAI Agents SDK
-
-CIP is designed to work with the official OpenAI Agents SDKs:
-
-- TypeScript: [`@openai/agents`](https://github.com/openai/openai-agents-js)
-- Python: [`openai-agents`](https://github.com/openai/openai-agents-python)
-
-Relevant docs:
-
-- [Agents SDK guide](https://developers.openai.com/api/docs/guides/agents-sdk/)
-- [Build agents quickstart](https://developers.openai.com/api/docs/quickstart/#build-agents)
-
-In this repo, OpenAI Agents SDK is the runtime adapter layer. CIP owns the infrastructure state around that runtime.
-
-## Compliance Positioning
-
-CIP should be positioned as a **compliance-enabling control plane**, not as a blanket “AI Act compliant” product.
-
-This repo now includes primitives for:
-
-- deployment-scoped EU AI Act compliance profiles
-- high-risk deployment activation gating based on required compliance artifacts
-- disclosure recording for user-facing AI interactions
-- human review recording and completion gating
-- trusted provenance fields that separate verified actors from client-asserted actors
-- replay and evidence bundles enriched with compliance state
-
-This repo does **not** render banners or first-message disclosures in your UI. Your application must still present those notices to end users and call the CIP disclosure endpoint to record that they were shown.
-
-See [`docs/eu-ai-act.md`](docs/eu-ai-act.md) for the implementation guide.
-
-## Hosted API Surface
-
-The hosted reference implementation exposes REST endpoints under `/v1`, including:
-
-- `POST /v1/sessions`
-- `POST /v1/sessions/{sessionId}/events:enqueue`
-- `POST /v1/sessions/{sessionId}:record-disclosure`
-- `POST /v1/sessions/{sessionId}:record-human-review`
-- `GET /v1/ingest-jobs/{jobId}`
-- `POST /v1/sessions/{sessionId}:complete`
-- `GET /v1/sessions/{sessionId}/replay`
-- `GET /v1/evidence-bundles/{sessionId}`
-- `GET /v1/deployments/{deploymentId}/compliance-profile`
-- `POST /v1/approval-requests/{approvalRequestId}:resolve`
-- `POST /v1/deployments/{deploymentId}:transition`
-- `POST /v1/deployments/{deploymentId}:rollback`
-- `GET /v1/deployments`
-- `GET /v1/tenants/{tenantId}`
-- `GET /v1/audit-events`
-
-Admin and operational endpoints under `/v1/admin` include:
-
-- tenants, connector definitions, credential bindings, connector bindings
-- policy packs, guardrail definitions, agent blueprints, deployments
-- deployment compliance profiles and compliance artifacts
-- API key issue, rotate, and revoke
-- dead-letter listing and requeue
-- retention cleanup
-- `/metrics`, `/healthz`, and `/readyz`
-
-See:
-
-- [`schemas/cip-admin-api.openapi.json`](schemas/cip-admin-api.openapi.json)
-- [`schemas/cip-control-plane.schema.json`](schemas/cip-control-plane.schema.json)
-- [`docs/eu-ai-act.md`](docs/eu-ai-act.md)
-
-## Monorepo Layout
+## Repository layout
 
 ```text
 .
-├── infra
-│   ├── helm/cip-control-plane
-│   └── terraform/kubernetes/cip-control-plane
-├── python/packages/cip
-├── schemas
-├── sql/postgres
-├── typescript/packages/cip
-└── typescript/services
-    ├── control-plane-api
-    ├── control-plane-migrate
-    └── control-plane-worker
+├── spec                      # CIP protocol specification
+├── schemas                   # JSON Schema + OpenAPI binding
+├── typescript
+│   └── packages
+│       ├── cip               # @new-odyssey/cip (SDK + reference implementation)
+│       └── conformance       # @new-odyssey/cip-conformance
+├── python
+│   └── packages
+│       ├── cip               # new-odyssey-cip
+│       └── lupercal          # new-odyssey-lupercal (staged commercial modules)
+├── lupercal                  # Lupercal platform (staged for private extraction)
+│   ├── romulus               # @new-odyssey/romulus — durable state
+│   ├── remus                 # @new-odyssey/remus — policy engine
+│   ├── services              # lupercal-api, lupercal-worker, lupercal-migrate
+│   ├── sql                   # Postgres migrations
+│   └── infra                 # Helm chart + Terraform module
+└── docs                      # Compatibility and compliance guides
 ```
 
 ## Development
 
-Build and test everything:
-
 ```bash
-npm test
+npm test          # everything
+npm run test:ts   # TypeScript packages and services
+npm run test:py   # Python packages
 ```
 
-TypeScript only:
+## Status
 
-```bash
-npm run test:ts
-```
+The protocol and SDKs are prerelease (`0.3.0-alpha`): contracts are alpha and `v1` stability guarantees are not yet in place. Breaking changes between alpha releases are recorded in the [CHANGELOG](CHANGELOG.md) and [docs/compatibility.md](docs/compatibility.md).
 
-Python only:
+## Security and contributions
 
-```bash
-npm run test:py
-```
+External contributions are welcome. Changes must preserve tenant isolation, append-only event provenance, idempotent public APIs, and explicit versioning of blueprints, policy packs, and guardrails. Report security issues privately to the maintainers rather than opening a public exploit issue.
 
-## Security And Contributions
-
-External contributions are welcome, but this is infrastructure code with audit and control-plane implications. Changes should preserve:
-
-- tenant isolation
-- append-only event provenance
-- idempotent public APIs
-- explicit versioning of blueprints, policy packs, and guardrails
-
-If you discover a security issue, report it privately to the maintainers rather than opening a public exploit issue.
-
-Repository policies and release notes:
-
-- [CONTRIBUTING.md](/Users/ademolaafolabi/Documents/GitHub/CIP/CONTRIBUTING.md)
-- [SECURITY.md](/Users/ademolaafolabi/Documents/GitHub/CIP/SECURITY.md)
-- [CHANGELOG.md](/Users/ademolaafolabi/Documents/GitHub/CIP/CHANGELOG.md)
-- [docs/compatibility.md](/Users/ademolaafolabi/Documents/GitHub/CIP/docs/compatibility.md)
-
-## Open-Source Boundary
-
-Included here:
-
-- SDKs and transport layers
-- repository interfaces and implementations
-- control-plane orchestration
-- policy and guardrail infrastructure
-- deployable reference control-plane services
-- connector contracts, stubs, and a generic HTTP JSON backend
-- AWS Secrets Manager secret backend plus local/dev secret resolvers
-- Helm, Terraform, SQL, and schema assets
-
-Not included here:
-
-- proprietary Pantheon or Phoenix business logic
-- closed policy packs or analytics
-- finished production connectors for every target platform
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [SECURITY.md](SECURITY.md)
 
 ## License
 

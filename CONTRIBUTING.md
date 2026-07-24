@@ -39,8 +39,8 @@ npm test
 Optional infrastructure checks:
 
 ```bash
-helm template cip-control-plane infra/helm/cip-control-plane >/dev/null
-cd infra/terraform/kubernetes/cip-control-plane
+helm template lupercal lupercal/infra/helm/lupercal >/dev/null
+cd lupercal/infra/terraform/kubernetes/lupercal
 terraform init -backend=false
 terraform validate
 ```

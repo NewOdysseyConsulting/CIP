@@ -1,22 +1,20 @@
 # new-odyssey-cip
 
-Python SDK for the Common Infrastructure Protocol.
+Python SDK for CIP, the open protocol for governed agent operations.
 
-This package provides the core CIP library surface for Python teams:
+This package provides the protocol types, client surface, and reference implementation for Python teams:
 
-- `CipControlPlane`
-- `CipClient`
-- `CipAdminClient`
-- `LocalCipControlPlaneTransport`
-- `HttpCipControlPlaneTransport`
-- `HttpCipAdminTransport`
+- protocol dataclasses for every CIP interchange domain (see [`spec/`](../../../spec/README.md))
+- `CipClient` and `CipAdminClient`
+- `LocalCipControlPlaneTransport`, `HttpCipControlPlaneTransport`, `HttpCipAdminTransport`
+- `CipControlPlane` + in-memory repositories: the non-durable reference implementation
 - `CipRunTracker`
-- `SecretBackendRegistry`
-- `AwsSecretsManagerSecretBackend`
-- `ConnectorBackendRegistry`
-- `HttpJsonConnectorBackend`
-- in-memory and Postgres repository factories
-- OpenAI Agents SDK runtime integration
+- the `PolicyEvaluator` protocol (engines such as Lupercal's Remus implement it)
+- `SecretBackendRegistry`, `AwsSecretsManagerSecretBackend`
+- `ConnectorBackendRegistry`, `HttpJsonConnectorBackend`
+- OpenAI Agents SDK reference runtime adapter
+
+Durable Postgres persistence and the deterministic policy engine live in the `new-odyssey-lupercal` package (`new_odyssey_lupercal.romulus`, `new_odyssey_lupercal.remus`), not in this SDK.
 
 Install from this monorepo:
 
@@ -40,4 +38,4 @@ control_plane = CipControlPlane(repositories)
 client = CipClient(LocalCipControlPlaneTransport(control_plane, repositories))
 ```
 
-For the full repo guide, hosted control-plane setup, and architecture notes, see the [root README](../../../README.md).
+For the protocol specification, conformance tooling, and architecture notes, see the [root README](../../../README.md) and [`spec/`](../../../spec/README.md).
