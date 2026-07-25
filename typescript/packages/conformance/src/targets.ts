@@ -91,30 +91,39 @@ export interface HttpTargetConfig {
 export const createHttpTarget = (config: HttpTargetConfig): ConformanceTarget => ({
   name: `hosted platform at ${config.baseUrl}`,
   setup: async (): Promise<ConformanceFixture> => {
-    const client = new CipClient(
-      new HttpCipControlPlaneTransport({
-        baseUrl: config.baseUrl,
-        ...(config.apiKey === undefined ? {} : { apiKey: config.apiKey }),
-        ...(config.operatorToken === undefined
-          ? {}
-          : { operatorToken: config.operatorToken }),
-      }),
-    );
+    if (config.operatorToken === undefined) {
+      // Fixture resolution, approval resolution, and audit listing all use
+      // operator-authenticated routes in the `/v1` binding.
+      throw new Error(
+        "an operator token is required to run the conformance suite over HTTP",
+      );
+    }
 
+    const buildClient = (apiKey?: string): CipClient =>
+      new CipClient(
+        new HttpCipControlPlaneTransport({
+          baseUrl: config.baseUrl,
+          ...(apiKey === undefined ? {} : { apiKey }),
+          operatorToken: config.operatorToken!,
+        }),
+      );
+
+    let client: CipClient;
     let tenant: TenantRecord | null = null;
     let deployment: DeploymentRecord | null = null;
 
     if (config.tenantId !== undefined && config.deploymentId !== undefined) {
+      if (config.apiKey === undefined) {
+        throw new Error(
+          "an API key scoped to the existing tenant is required alongside --tenant-id/--deployment-id",
+        );
+      }
+      client = buildClient(config.apiKey);
       tenant = await client.getTenant(config.tenantId);
       const deployments = await client.listDeployments(config.tenantId);
       deployment =
         deployments.find((record) => record.id === config.deploymentId) ?? null;
     } else {
-      if (config.operatorToken === undefined) {
-        throw new Error(
-          "an operator token is required to provision a conformance fixture over HTTP",
-        );
-      }
       const admin = new CipAdminClient(
         new HttpCipAdminTransport({
           baseUrl: config.baseUrl,
@@ -154,6 +163,25 @@ export const createHttpTarget = (config: HttpTargetConfig): ConformanceTarget =>
         environment: "test",
         connectorBindingIds: [],
       });
+
+      // API keys are tenant-scoped, so a caller-supplied key cannot write
+      // sessions for the freshly provisioned tenant — issue a fixture key.
+      const issuedKey = await admin.issueApiKey({
+        tenantId: tenant.id,
+        name: `conformance-${suffix}`,
+        scopes: [
+          "sessions:read",
+          "sessions:write",
+          "approvals:write",
+          "approvals:resolve",
+          "deployments:read",
+          "deployments:write",
+          "tenants:read",
+          "audit:read",
+        ],
+      });
+      client = buildClient(issuedKey.plainTextKey);
+
       deployment = await client.transitionDeployment({
         deploymentId: deployment.id,
         targetStatus: "active",

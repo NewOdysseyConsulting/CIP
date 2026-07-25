@@ -25,5 +25,5 @@ Producers deliver recorded events to a platform in batches:
 ## Requirements
 
 - Hosted platforms MUST honor the batch idempotency key: redelivering a batch with the same key MUST NOT duplicate events (the conformance suite exercises this). In-process transports MAY delegate idempotency to the caller.
-- Producers MUST assign event `sequence` before delivery; platforms MUST preserve producer ordering within a session.
+- Event envelopes carry no `sequence`; the platform assigns the per-session `sequence` at ingest. Producers MUST order events within a batch by occurrence, and platforms MUST assign sequences that preserve that order within a session.
 - Asynchronous acceptance is allowed (receipt before persistence), but a receipt MUST be traceable to a terminal ingest outcome (processed or dead-lettered) via the job record.

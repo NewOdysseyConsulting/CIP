@@ -27,7 +27,7 @@ Each lifecycle moment is one event: `type` (see the closed enum: `run_started`, 
 Requirements:
 
 - Event streams are append-only. Implementations MUST NOT mutate or delete events inside the retention window.
-- `sequence` MUST be strictly increasing per session; consumers MUST order by sequence, not arrival.
+- `sequence` is assigned by the platform at ingest, MUST be strictly increasing per session, and MUST preserve producer ordering within a batch; consumers MUST order by sequence, not arrival.
 - Replay (projecting session state from its events) MUST be deterministic: the same event stream yields the same session view.
 
 ## Deployment lifecycle

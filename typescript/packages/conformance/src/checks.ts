@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type {
   CipEventBatch,
+  CipIngestReceipt,
   RunSession,
 } from "@new-odyssey/cip";
 
@@ -11,22 +12,78 @@ import {
   type ConformanceFixture,
 } from "./types.js";
 
+const INGEST_POLL_INTERVAL_MS = 250;
+const INGEST_POLL_ATTEMPTS = 40;
+
 const expect = (condition: boolean, message: string): void => {
   if (!condition) {
     throw new ConformanceViolation(message);
   }
 };
 
+const sleep = async (durationMs: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, durationMs);
+  });
+
 const startSession = async (
   fixture: ConformanceFixture,
   correlationId?: string,
 ): Promise<RunSession> =>
-  fixture.client.createSession({
-    tenantId: fixture.tenant.id,
-    deploymentId: fixture.deployment.id,
-    correlationId: correlationId ?? `conf-${randomUUID()}`,
-    inputSummary: "Conformance suite session.",
-  });
+  fixture.client.createSession(
+    {
+      tenantId: fixture.tenant.id,
+      deploymentId: fixture.deployment.id,
+      correlationId: correlationId ?? `conf-${randomUUID()}`,
+      inputSummary: "Conformance suite session.",
+    },
+    `conf-session-${randomUUID()}`,
+  );
+
+const completeSession = async (
+  fixture: ConformanceFixture,
+  input: Parameters<ConformanceFixture["client"]["completeSession"]>[0],
+): Promise<RunSession> =>
+  fixture.client.completeSession(input, `conf-complete-${randomUUID()}`);
+
+/**
+ * Hosted platforms may acknowledge a batch before persisting it. Poll the
+ * ingest job to a terminal state so later replay reads observe the events.
+ * A null job (in-process transports ingest synchronously) means done.
+ */
+const awaitIngest = async (
+  fixture: ConformanceFixture,
+  receipt: CipIngestReceipt,
+): Promise<void> => {
+  for (let attempt = 0; attempt < INGEST_POLL_ATTEMPTS; attempt += 1) {
+    const job = await fixture.client.getIngestJob(receipt.ingestJobId);
+    if (job === null || job.status === "completed") {
+      return;
+    }
+    if (job.status === "failed" || job.status === "dead_letter") {
+      throw new ConformanceViolation(
+        `ingest job ${job.id} reached ${job.status}: ${job.lastError ?? "no error recorded"}`,
+      );
+    }
+    await sleep(INGEST_POLL_INTERVAL_MS);
+  }
+  throw new ConformanceViolation(
+    `ingest job ${receipt.ingestJobId} did not reach a terminal state in time`,
+  );
+};
+
+const enqueueAndAwait = async (
+  fixture: ConformanceFixture,
+  batch: CipEventBatch,
+  idempotencyKey?: string,
+): Promise<CipIngestReceipt> => {
+  const receipt = await fixture.client.enqueueEvents(
+    batch,
+    idempotencyKey ?? `conf-batch-${randomUUID()}`,
+  );
+  await awaitIngest(fixture, receipt);
+  return receipt;
+};
 
 const toolEventBatch = (
   fixture: ConformanceFixture,
@@ -66,7 +123,7 @@ export const CONFORMANCE_CHECKS: ConformanceCheck[] = [
         `new session must be queued or running, got ${session.status}`,
       );
 
-      const completed = await fixture.client.completeSession({
+      const completed = await completeSession(fixture, {
         sessionId: session.id,
         status: "completed",
         outputSummary: "Conformance run finished.",
@@ -84,14 +141,14 @@ export const CONFORMANCE_CHECKS: ConformanceCheck[] = [
     spec: "execution-outcomes.md",
     run: async (fixture) => {
       const session = await startSession(fixture);
-      await fixture.client.completeSession({
+      await completeSession(fixture, {
         sessionId: session.id,
         status: "completed",
       });
 
       let mutated = false;
       try {
-        const second = await fixture.client.completeSession({
+        const second = await completeSession(fixture, {
           sessionId: session.id,
           status: "failed",
           outputSummary: "attempted overwrite",
@@ -114,7 +171,7 @@ export const CONFORMANCE_CHECKS: ConformanceCheck[] = [
     spec: "workflow-state.md",
     run: async (fixture) => {
       const session = await startSession(fixture);
-      await fixture.client.enqueueEvents(toolEventBatch(fixture, session.id));
+      await enqueueAndAwait(fixture, toolEventBatch(fixture, session.id));
       const replay = await fixture.client.getReplay(session.id);
 
       expect(replay.runEvents.length >= 3, "expected run_started plus tool events");
@@ -148,8 +205,8 @@ export const CONFORMANCE_CHECKS: ConformanceCheck[] = [
       const batch = toolEventBatch(fixture, session.id);
       const key = `conf-idem-${randomUUID()}`;
 
-      await fixture.client.enqueueEvents(batch, key);
-      await fixture.client.enqueueEvents(batch, key);
+      await enqueueAndAwait(fixture, batch, key);
+      await enqueueAndAwait(fixture, batch, key);
 
       const replay = await fixture.client.getReplay(session.id);
       const toolCalls = replay.runEvents.filter(
@@ -199,17 +256,26 @@ export const CONFORMANCE_CHECKS: ConformanceCheck[] = [
         "approved session must resume running",
       );
 
-      let doubleResolved = false;
+      // A second, conflicting resolution may be rejected outright or answered
+      // idempotently with the recorded resolution — but it must not change it.
+      let overwritten = false;
       try {
-        await fixture.client.resolveApproval({
+        const second = await fixture.client.resolveApproval({
           approvalRequestId: approval.id,
           decision: "rejected",
         });
-        doubleResolved = true;
+        overwritten = second.status !== "approved";
       } catch {
-        // Terminal approval statuses are immutable.
+        // Rejecting the conflicting write satisfies the requirement.
       }
-      expect(!doubleResolved, "resolved approvals must not be re-resolvable");
+      const finalReplay = await fixture.client.getReplay(session.id);
+      const storedApproval = finalReplay.approvalRequests.find(
+        (request) => request.id === approval.id,
+      );
+      expect(
+        !overwritten && storedApproval?.status === "approved",
+        "terminal approval resolutions must be immutable",
+      );
     },
   },
   {
@@ -218,8 +284,8 @@ export const CONFORMANCE_CHECKS: ConformanceCheck[] = [
     spec: "evidence-and-citations.md",
     run: async (fixture) => {
       const session = await startSession(fixture);
-      await fixture.client.enqueueEvents(toolEventBatch(fixture, session.id));
-      await fixture.client.completeSession({
+      await enqueueAndAwait(fixture, toolEventBatch(fixture, session.id));
+      await completeSession(fixture, {
         sessionId: session.id,
         status: "completed",
         outputSummary: "Evidence check complete.",
@@ -249,8 +315,8 @@ export const CONFORMANCE_CHECKS: ConformanceCheck[] = [
     spec: "workflow-state.md",
     run: async (fixture) => {
       const session = await startSession(fixture);
-      await fixture.client.enqueueEvents(toolEventBatch(fixture, session.id));
-      await fixture.client.completeSession({
+      await enqueueAndAwait(fixture, toolEventBatch(fixture, session.id));
+      await completeSession(fixture, {
         sessionId: session.id,
         status: "completed",
       });
@@ -273,7 +339,7 @@ export const CONFORMANCE_CHECKS: ConformanceCheck[] = [
     spec: "audit-events.md",
     run: async (fixture) => {
       const session = await startSession(fixture);
-      await fixture.client.completeSession({
+      await completeSession(fixture, {
         sessionId: session.id,
         status: "completed",
       });

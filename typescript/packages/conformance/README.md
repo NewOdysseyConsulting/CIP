@@ -16,13 +16,13 @@ Against a hosted platform (provisions a throwaway fixture tenant via the admin A
 npx cip-conformance --base-url https://cip.example.com --api-key $CIP_API_KEY --operator-token $CIP_OPERATOR_TOKEN
 ```
 
-Against an existing tenant and deployment instead of provisioning:
+Against an existing tenant and deployment instead of provisioning (the API key must be scoped to that tenant):
 
 ```bash
-npx cip-conformance --base-url https://cip.example.com --api-key $CIP_API_KEY --tenant-id t_123 --deployment-id d_456
+npx cip-conformance --base-url https://cip.example.com --api-key $CIP_API_KEY --operator-token $CIP_OPERATOR_TOKEN --tenant-id t_123 --deployment-id d_456
 ```
 
-Exit code is `0` when no check fails.
+An operator token is always required in HTTP mode — fixture resolution, approval resolution, and audit listing use operator-authenticated routes. In provisioning mode the suite issues its own tenant-scoped SDK key for the fixture tenant. Exit code is `0` when no check fails.
 
 ## Checks
 

@@ -29,7 +29,7 @@ A platform MAY be non-durable (reference implementation); durability, recovery, 
 
 ## Producer requirements (summary)
 
-Producers MUST scope every object with `tenantId`/`deploymentId`/`sessionId`, assign monotonic event sequences, reuse `correlationId` across retries and delegation, and only invoke capabilities declared by the bound deployment.
+Producers MUST scope every object with `tenantId`/`deploymentId`/`sessionId`, deliver events in occurrence order (the platform assigns each session's monotonic `sequence` at ingest), reuse `correlationId` across retries and delegation, and only invoke capabilities declared by the bound deployment.
 
 ## Running the suite
 
