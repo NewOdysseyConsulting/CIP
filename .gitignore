@@ -143,3 +143,5 @@ vite.config.ts.timestamp-*
 __pycache__/
 *.py[cod]
 .pytest_cache/
+
+*.egg-info/

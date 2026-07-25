@@ -70,12 +70,15 @@ from .control_plane import (
     TransitionDeploymentInput,
     UpsertComplianceProfileInput,
 )
-from .guardrails import create_default_guardrail_catalog
 from .in_memory import create_in_memory_cip_repositories
 from .observability import InMemoryTelemetrySink
 from .openai_adapter import create_cip_control_plane_agent
-from .policy import DeterministicPolicyEvaluator, PolicyEvaluationContext
-from .postgres import PHASE1_POSTGRES_MIGRATION_SQL, create_postgres_cip_repositories
+from .policy import (
+    PolicyDecision,
+    PolicyEvaluationContext,
+    PolicyEvaluator,
+    PolicyEvidenceReference,
+)
 from .records import (
     AgentBlueprint,
     ApprovalRequest,
@@ -168,7 +171,6 @@ __all__ = [
     "DeployAgentInput",
     "DisclosureRecord",
     "DeploymentRecord",
-    "DeterministicPolicyEvaluator",
     "EnvironmentSecretResolver",
     "EvidenceBundle",
     "GuardrailDefinition",
@@ -183,10 +185,12 @@ __all__ = [
     "IssuedApiKeyResponse",
     "LocalCipControlPlaneTransport",
     "OpenAIAgentsRuntimeAdapter",
-    "PHASE1_POSTGRES_MIGRATION_SQL",
     "PolicyClause",
     "PolicyCondition",
+    "PolicyDecision",
     "PolicyEvaluationContext",
+    "PolicyEvaluator",
+    "PolicyEvidenceReference",
     "PolicyPack",
     "PolicyRule",
     "PublishGuardrailDefinitionInput",
@@ -220,9 +224,7 @@ __all__ = [
     "VaultReference",
     "create_admin_api_handlers",
     "create_cip_control_plane_agent",
-    "create_default_guardrail_catalog",
     "create_in_memory_cip_repositories",
-    "create_postgres_cip_repositories",
     "dynamics365_connector_healthcheck",
     "dynamics365_connector_manifest",
     "dynamics365_connector_stub",

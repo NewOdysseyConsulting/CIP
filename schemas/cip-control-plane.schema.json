@@ -69,6 +69,12 @@
     },
     "humanReviewRecord": {
       "$ref": "#/$defs/HumanReviewRecord"
+    },
+    "policyDecision": {
+      "$ref": "#/$defs/PolicyDecision"
+    },
+    "traceCorrelation": {
+      "$ref": "#/$defs/TraceCorrelation"
     }
   },
   "$defs": {
@@ -812,7 +818,7 @@
               "type": "string"
             },
             "traceCorrelation": {
-              "type": "object"
+              "$ref": "#/$defs/TraceCorrelation"
             },
             "complianceProfileSnapshot": {
               "oneOf": [
@@ -955,7 +961,7 @@
               "type": "object"
             },
             "traceCorrelation": {
-              "type": "object"
+              "$ref": "#/$defs/TraceCorrelation"
             },
             "assertedActor": {
               "$ref": "#/$defs/AuditActor"
@@ -1082,7 +1088,7 @@
               "type": "object"
             },
             "traceCorrelation": {
-              "type": "object"
+              "$ref": "#/$defs/TraceCorrelation"
             },
             "occurredAt": {
               "type": "string",
@@ -1816,6 +1822,123 @@
           }
         }
       ]
+    },
+    "TraceCorrelation": {
+      "type": "object",
+      "required": [
+        "provider"
+      ],
+      "properties": {
+        "provider": {
+          "enum": [
+            "openai",
+            "custom"
+          ]
+        },
+        "traceId": {
+          "type": "string"
+        },
+        "spanId": {
+          "type": "string"
+        },
+        "conversationId": {
+          "type": "string"
+        },
+        "responseId": {
+          "type": "string"
+        }
+      }
+    },
+    "PolicyEvaluationContext": {
+      "type": "object",
+      "required": [
+        "tenantId",
+        "facts"
+      ],
+      "properties": {
+        "tenantId": {
+          "type": "string"
+        },
+        "deploymentId": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "facts": {
+          "type": "object"
+        }
+      }
+    },
+    "PolicyEvidenceReference": {
+      "type": "object",
+      "required": [
+        "type",
+        "id"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "policy-pack",
+            "guardrail-definition",
+            "fact"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        }
+      }
+    },
+    "PolicyDecision": {
+      "type": "object",
+      "required": [
+        "action",
+        "matchedRuleIds",
+        "failedClauseIds",
+        "triggeredGuardrailIds",
+        "explanation",
+        "evidenceRefs"
+      ],
+      "properties": {
+        "action": {
+          "enum": [
+            "allow",
+            "flag",
+            "block",
+            "escalate"
+          ]
+        },
+        "matchedRuleIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "failedClauseIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "triggeredGuardrailIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "explanation": {
+          "type": "string"
+        },
+        "evidenceRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PolicyEvidenceReference"
+          }
+        }
+      }
     }
   }
 }

@@ -36,13 +36,10 @@ npm run build
 npm test
 ```
 
-Optional infrastructure checks:
+Protocol conformance check against the reference implementation:
 
 ```bash
-helm template cip-control-plane infra/helm/cip-control-plane >/dev/null
-cd infra/terraform/kubernetes/cip-control-plane
-terraform init -backend=false
-terraform validate
+npx cip-conformance
 ```
 
 ## Change guidelines

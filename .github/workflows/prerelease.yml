@@ -42,7 +42,9 @@ jobs:
           npm test
 
       - name: npm dry run
-        run: npm pack --workspace @new-odyssey/cip --dry-run
+        run: |
+          npm pack --workspace @new-odyssey/cip --dry-run
+          npm pack --workspace @new-odyssey/cip-conformance --dry-run
 
       - name: Build Python prerelease artifact
         run: |
@@ -53,7 +55,9 @@ jobs:
         if: ${{ inputs.publish }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --workspace @new-odyssey/cip --tag alpha --access public
+        run: |
+          npm publish --workspace @new-odyssey/cip --tag alpha --access public
+          npm publish --workspace @new-odyssey/cip-conformance --tag alpha --access public
 
       - name: Publish PyPI prerelease
         if: ${{ inputs.publish }}

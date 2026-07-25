@@ -7,7 +7,6 @@ import {
   CipControlPlaneError,
   CipAdminClient,
   CipAuthError,
-  DeterministicPolicyEvaluator,
   EnvironmentSecretResolver,
   HttpCipAdminTransport,
   HttpJsonConnectorBackend,
@@ -19,11 +18,11 @@ import {
   ConnectorBackendRegistry,
   createAdminApiHandlers,
   createCipControlPlaneAgent,
-  createDefaultGuardrailCatalog,
   createInMemoryCipRepositories,
   dynamics365ConnectorManifest,
   workdayConnectorManifest,
   workdayConnectorStub,
+  type PolicyEvaluator,
 } from "../src/index.js";
 
 const createWorkdaySecurityFixture = async () => {
@@ -82,13 +81,22 @@ const createWorkdaySecurityFixture = async () => {
     config: { tenantAlias: "acme_prod" },
   });
 
-  const [defaultGuardrail] = createDefaultGuardrailCatalog();
-  assert.ok(defaultGuardrail);
   const guardrail = await controlPlane.publishGuardrailDefinition({
-    key: defaultGuardrail.key,
-    version: defaultGuardrail.version,
-    name: defaultGuardrail.name,
-    configuration: defaultGuardrail.configuration,
+    key: "tenant_boundary",
+    version: "1.0.0",
+    name: "Tenant Boundary",
+    configuration: {
+      clauses: [
+        {
+          id: "tenant-boundary",
+          name: "tenant-boundary",
+          match: "all",
+          conditions: [
+            { path: "tenant.allowed", operator: "eq", value: true },
+          ],
+        },
+      ],
+    },
   });
 
   const policyPack = await controlPlane.publishPolicyPack({
@@ -441,9 +449,18 @@ test("compliance profiles gate high-risk activation and disclosure requirements"
   assert.equal(evidence?.complianceArtifactIds.length, 6);
 });
 
-test("policy evaluation, admin stubs, secrets, and runtime adapters behave deterministically", async () => {
+test("admin stubs, secrets, and runtime adapters accept a pluggable policy evaluator", async () => {
   const fixture = await createWorkdaySecurityFixture();
-  const evaluator = new DeterministicPolicyEvaluator();
+  const evaluator: PolicyEvaluator = {
+    evaluate: (policyPack, context, guardrails = []) => ({
+      action: "flag",
+      matchedRuleIds: policyPack.rules.map((rule) => rule.id),
+      failedClauseIds: [],
+      triggeredGuardrailIds: guardrails.map((definition) => definition.id),
+      explanation: `Stub decision for ${context.tenantId}.`,
+      evidenceRefs: [{ type: "policy-pack", id: policyPack.id }],
+    }),
+  };
   const handlers = createAdminApiHandlers(
     fixture.controlPlane,
     fixture.repositories,

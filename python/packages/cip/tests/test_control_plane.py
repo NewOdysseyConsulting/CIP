@@ -16,14 +16,15 @@ from new_odyssey_cip import (
     CreateConnectorBindingInput,
     CreateCredentialBindingInput,
     DeployAgentInput,
-    DeterministicPolicyEvaluator,
     EnvironmentSecretResolver,
     HumanApprovalCheckpoint,
     InMemoryTelemetrySink,
     OpenAIAgentsRuntimeAdapter,
     PolicyClause,
     PolicyCondition,
+    PolicyDecision,
     PolicyEvaluationContext,
+    PolicyEvidenceReference,
     PolicyRule,
     PublishGuardrailDefinitionInput,
     PublishPolicyPackInput,
@@ -45,7 +46,6 @@ from new_odyssey_cip import (
     VaultReference,
     create_admin_api_handlers,
     create_cip_control_plane_agent,
-    create_default_guardrail_catalog,
     create_in_memory_cip_repositories,
     dynamics365_connector_manifest,
     workday_connector_manifest,
@@ -116,13 +116,27 @@ def create_workday_security_fixture() -> dict[str, object]:
         )
     )
 
-    default_guardrail = create_default_guardrail_catalog()[0]
     guardrail = control_plane.publish_guardrail_definition(
         PublishGuardrailDefinitionInput(
-            key=default_guardrail.key,
-            version=default_guardrail.version,
-            name=default_guardrail.name,
-            configuration=default_guardrail.configuration,
+            key="tenant_boundary",
+            version="1.0.0",
+            name="Tenant Boundary",
+            configuration={
+                "clauses": [
+                    PolicyClause(
+                        id="tenant-boundary",
+                        name="tenant-boundary",
+                        match="all",
+                        conditions=[
+                            PolicyCondition(
+                                path="tenant.allowed",
+                                operator="eq",
+                                value=True,
+                            )
+                        ],
+                    )
+                ]
+            },
         )
     )
 
@@ -536,7 +550,20 @@ class CipControlPlaneTests(unittest.TestCase):
         guardrail = fixture["guardrail"]
         credential_binding = fixture["credential_binding"]
 
-        evaluator = DeterministicPolicyEvaluator()
+        class StubPolicyEvaluator:
+            def evaluate(self, policy_pack, context, guardrails=None):
+                return PolicyDecision(
+                    action="flag",
+                    matched_rule_ids=["least-privilege"],
+                    failed_clause_ids=[],
+                    triggered_guardrail_ids=[guardrail.id],
+                    explanation="Stub evaluator decision.",
+                    evidence_refs=[
+                        PolicyEvidenceReference(type="policy-pack", id=policy_pack.id)
+                    ],
+                )
+
+        evaluator = StubPolicyEvaluator()
         handlers = create_admin_api_handlers(control_plane, repositories, evaluator)
         runtime = OpenAIAgentsRuntimeAdapter()
 
