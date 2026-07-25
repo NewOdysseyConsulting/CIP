@@ -26,4 +26,4 @@ A structured link into distributed-tracing and conversation systems, attachable 
 - Trace identifiers are opaque: implementations MUST NOT parse, validate, or rewrite them beyond storing and returning.
 - When a runtime adapter has trace context (e.g. an OpenAI `responseId`), it SHOULD attach `TraceCorrelation` to the session at start and to events it emits, so evidence bundles can cite external traces.
 - Events inherit their session's correlation scope; a per-event `traceCorrelation` refines, never replaces, session-level identity (`tenantId`/`sessionId` remain authoritative for scoping).
-- Identifiers MUST never carry secrets or personal data; they are exchanged across trust boundaries.
+- Producers MUST NOT place secrets or personal data in trace identifiers — they are exchanged across trust boundaries, and platforms cannot police values they are required to treat as opaque. Platforms MUST limit their own handling to opaque storage and return, subject to documented retention controls.

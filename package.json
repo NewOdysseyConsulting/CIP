@@ -5,7 +5,7 @@
   "description": "Polyglot monorepo for CIP, the open protocol for governed agent operations: spec, schemas, SDKs, reference adapters, and conformance tools.",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "workspaces": [
     "typescript/packages/*"

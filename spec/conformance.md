@@ -35,7 +35,7 @@ Producers MUST scope every object with `tenantId`/`deploymentId`/`sessionId`, de
 
 ```bash
 npx cip-conformance            # against the bundled in-memory reference implementation
-npx cip-conformance --base-url https://cip.example.com --api-key $KEY --operator-token $TOKEN
+npx cip-conformance --base-url https://cip.example.com   # hosted; credentials via CIP_API_KEY / CIP_OPERATOR_TOKEN env vars
 ```
 
 The suite reports one result per check; a platform passes a conformance level when every check in that level passes. Checks are versioned with the spec — see the package README for the current check list.

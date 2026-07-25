@@ -22,6 +22,7 @@ import {
   dynamics365ConnectorManifest,
   workdayConnectorManifest,
   workdayConnectorStub,
+  type PolicyEvaluator,
 } from "../src/index.js";
 
 const createWorkdaySecurityFixture = async () => {
@@ -450,16 +451,14 @@ test("compliance profiles gate high-risk activation and disclosure requirements"
 
 test("admin stubs, secrets, and runtime adapters accept a pluggable policy evaluator", async () => {
   const fixture = await createWorkdaySecurityFixture();
-  const evaluator = {
-    evaluate: () => ({
-      action: "flag" as const,
-      matchedRuleIds: ["least-privilege"],
+  const evaluator: PolicyEvaluator = {
+    evaluate: (policyPack, context, guardrails = []) => ({
+      action: "flag",
+      matchedRuleIds: policyPack.rules.map((rule) => rule.id),
       failedClauseIds: [],
-      triggeredGuardrailIds: [fixture.guardrail.id],
-      explanation: "Stub evaluator decision.",
-      evidenceRefs: [
-        { type: "policy-pack" as const, id: fixture.policyPack.id },
-      ],
+      triggeredGuardrailIds: guardrails.map((definition) => definition.id),
+      explanation: `Stub decision for ${context.tenantId}.`,
+      evidenceRefs: [{ type: "policy-pack", id: policyPack.id }],
     }),
   };
   const handlers = createAdminApiHandlers(
@@ -475,7 +474,18 @@ test("admin stubs, secrets, and runtime adapters accept a pluggable policy evalu
     "aws:test/secret": "stubbed-secret",
   });
 
-  const evaluation = evaluator.evaluate();
+  const evaluation = evaluator.evaluate(
+    fixture.policyPack,
+    {
+      tenantId: fixture.tenant.id,
+      deploymentId: fixture.deployment.id,
+      facts: {
+        permissions: { delta: 2 },
+        tenant: { allowed: true },
+      },
+    },
+    [fixture.guardrail],
+  );
 
   const healthcheck = await handlers.postConnectorHealthcheck("workday");
   const policyResult = await handlers.evaluatePolicy(fixture.policyPack.id, {

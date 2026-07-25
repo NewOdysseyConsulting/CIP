@@ -961,7 +961,7 @@
               "type": "object"
             },
             "traceCorrelation": {
-              "type": "object"
+              "$ref": "#/$defs/TraceCorrelation"
             },
             "assertedActor": {
               "$ref": "#/$defs/AuditActor"
@@ -1088,7 +1088,7 @@
               "type": "object"
             },
             "traceCorrelation": {
-              "type": "object"
+              "$ref": "#/$defs/TraceCorrelation"
             },
             "occurredAt": {
               "type": "string",

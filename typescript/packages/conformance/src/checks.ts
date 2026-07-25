@@ -144,24 +144,26 @@ export const CONFORMANCE_CHECKS: ConformanceCheck[] = [
       await completeSession(fixture, {
         sessionId: session.id,
         status: "completed",
+        outputSummary: "Original terminal outcome.",
       });
+      const before = await fixture.client.getReplay(session.id);
 
-      let mutated = false;
       try {
-        const second = await completeSession(fixture, {
+        await completeSession(fixture, {
           sessionId: session.id,
           status: "failed",
           outputSummary: "attempted overwrite",
         });
-        mutated = second.status !== "completed";
       } catch {
         // Rejecting the write satisfies the requirement.
       }
 
-      const replay = await fixture.client.getReplay(session.id);
+      const after = await fixture.client.getReplay(session.id);
       expect(
-        !mutated && replay.session.status === "completed",
-        "terminal status must be immutable",
+        after.session.status === "completed" &&
+          after.session.completedAt === before.session.completedAt &&
+          after.session.outputSummary === before.session.outputSummary,
+        "the full terminal outcome (status, completedAt, outputSummary) must be immutable",
       );
     },
   },
@@ -208,6 +210,26 @@ export const CONFORMANCE_CHECKS: ConformanceCheck[] = [
       await enqueueAndAwait(fixture, batch, key);
       await enqueueAndAwait(fixture, batch, key);
 
+      // Reusing the key with a different batch is a conflict: the platform
+      // must not apply the conflicting events (rejecting outright is best).
+      const conflicting: CipEventBatch = {
+        tenantId: fixture.tenant.id,
+        sessionId: session.id,
+        events: [
+          {
+            kind: "run_event",
+            type: "guardrail_triggered",
+            payload: { conflict: true },
+          },
+        ],
+      };
+      try {
+        const receipt = await fixture.client.enqueueEvents(conflicting, key);
+        await awaitIngest(fixture, receipt);
+      } catch {
+        // Rejecting conflicting key reuse satisfies the requirement.
+      }
+
       const replay = await fixture.client.getReplay(session.id);
       const toolCalls = replay.runEvents.filter(
         (event) => event.type === "tool_called",
@@ -215,6 +237,10 @@ export const CONFORMANCE_CHECKS: ConformanceCheck[] = [
       expect(
         toolCalls.length === 1,
         `expected exactly one tool_called event, got ${toolCalls.length}`,
+      );
+      expect(
+        !replay.runEvents.some((event) => event.type === "guardrail_triggered"),
+        "a conflicting batch reusing an idempotency key must not be applied",
       );
     },
   },

@@ -53,7 +53,7 @@ Prerequisites: Node.js `>=22`, Python `>=3.10`.
 
 ```bash
 npm install
-npm run build --workspace @new-odyssey/cip
+npm run build
 ```
 
 ```bash
@@ -120,10 +120,10 @@ Run the suite against the bundled reference implementation:
 npx cip-conformance
 ```
 
-Or against a hosted platform:
+Or against a hosted platform, with credentials supplied via the `CIP_API_KEY` and `CIP_OPERATOR_TOKEN` environment variables:
 
 ```bash
-npx cip-conformance --base-url https://cip.example.com --api-key $CIP_API_KEY --operator-token $CIP_OPERATOR_TOKEN
+npx cip-conformance --base-url https://cip.example.com
 ```
 
 Checks cover session lifecycle, terminal immutability, event ordering, ingest idempotency, approval flow, evidence bundles, replay determinism, and audit provenance. See [`spec/conformance.md`](spec/conformance.md).

@@ -4,7 +4,7 @@ CIP models a governed run as a `RunSession` whose status advances through an exp
 
 ## RunSession state machine
 
-```
+```text
 queued ── running ── waiting-human ── running ─┬─ completed
             │              │                   └─ failed
             └──────────────┴────────────────────── failed

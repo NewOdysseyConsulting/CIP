@@ -7,18 +7,21 @@ const argValue = (name: string): string | undefined => {
   return index === -1 ? undefined : process.argv[index + 1];
 };
 
-const baseUrl = argValue("--base-url");
+const baseUrl = argValue("--base-url") ?? process.env.CIP_BASE_URL;
+// Credentials are read from the environment so they never appear in
+// process listings, shell history, or CI command logs. The flags remain
+// as overrides for local experimentation only.
+const apiKey = argValue("--api-key") ?? process.env.CIP_API_KEY;
+const operatorToken =
+  argValue("--operator-token") ?? process.env.CIP_OPERATOR_TOKEN;
+
 const target =
   baseUrl === undefined
     ? createLocalTarget()
     : createHttpTarget({
         baseUrl,
-        ...(argValue("--api-key") === undefined
-          ? {}
-          : { apiKey: argValue("--api-key")! }),
-        ...(argValue("--operator-token") === undefined
-          ? {}
-          : { operatorToken: argValue("--operator-token")! }),
+        ...(apiKey === undefined ? {} : { apiKey }),
+        ...(operatorToken === undefined ? {} : { operatorToken }),
         ...(argValue("--tenant-id") === undefined
           ? {}
           : { tenantId: argValue("--tenant-id")! }),

@@ -10,19 +10,22 @@ Against the bundled in-memory reference implementation:
 npx cip-conformance
 ```
 
-Against a hosted platform (provisions a throwaway fixture tenant via the admin API):
+Against a hosted platform (provisions a throwaway fixture tenant via the admin API). Credentials are read from the environment — `CIP_API_KEY` and `CIP_OPERATOR_TOKEN` — so they never appear in process listings, shell history, or CI logs:
 
 ```bash
-npx cip-conformance --base-url https://cip.example.com --api-key $CIP_API_KEY --operator-token $CIP_OPERATOR_TOKEN
+export CIP_OPERATOR_TOKEN=...   # e.g. from your secret manager
+npx cip-conformance --base-url https://cip.example.com
 ```
 
-Against an existing tenant and deployment instead of provisioning (the API key must be scoped to that tenant):
+Against an existing tenant and deployment instead of provisioning (`CIP_API_KEY` must be scoped to that tenant):
 
 ```bash
-npx cip-conformance --base-url https://cip.example.com --api-key $CIP_API_KEY --operator-token $CIP_OPERATOR_TOKEN --tenant-id t_123 --deployment-id d_456
+export CIP_API_KEY=...
+export CIP_OPERATOR_TOKEN=...
+npx cip-conformance --base-url https://cip.example.com --tenant-id t_123 --deployment-id d_456
 ```
 
-An operator token is always required in HTTP mode — fixture resolution, approval resolution, and audit listing use operator-authenticated routes. In provisioning mode the suite issues its own tenant-scoped SDK key for the fixture tenant. Exit code is `0` when no check fails.
+`--api-key` / `--operator-token` flags exist as overrides for local experimentation, but prefer the environment variables. An operator token is always required in HTTP mode — fixture resolution, approval resolution, and audit listing use operator-authenticated routes. In provisioning mode the suite issues its own tenant-scoped SDK key for the fixture tenant. Exit code is `0` when no check fails.
 
 ## Checks
 

@@ -20,7 +20,7 @@ The isolation boundary. Every other object hangs off a `tenantId`.
 
 The versioned identity of an agent: what it is, which runtime executes it, and which policy surface governs it. Blueprints are immutable per `key`+`version` and carry a `dependencySnapshot` pinning the exact policy-pack, guardrail, and connector-manifest versions in force when the blueprint was released. `releaseState` moves `draft` → `released` → `deprecated`; a released blueprint's dependencies MUST NOT change.
 
-Capabilities are expressed by reference: `connectorDefinitionIds`, `policyPackIds`, `guardrailDefinitionIds`, and `handoffTargets` (the blueprint keys this agent may delegate to — see [task-delegation.md](task-delegation.md)).
+Capabilities are expressed by reference: `connectorDefinitionIds`, `policyPackIds`, `guardrailDefinitionIds`, and `handoffTargets` (the blueprint keys this agent may delegate to — see [task-delegation.md](task-delegation.md)). Handoff targets are named by key, not version: the implementation resolves the target's active deployment for the same tenant and environment at delegation time, and MUST record the resolved blueprint version in the `handoff_started` event payload so evidence pins the exact identity that received the work.
 
 ### ConnectorDefinition
 
